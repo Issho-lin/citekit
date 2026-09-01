@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# FastGPT 仅作本地对照，不进本仓库
+FastGPT/
+
+.cursor/
+*.local
+.vite
