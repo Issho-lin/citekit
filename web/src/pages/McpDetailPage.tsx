@@ -16,7 +16,7 @@ import { Crumb, Empty, PageHero, Panel } from "../components/chrome";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { MySelect } from "../components/MySelect";
 import { RetrievePlay } from "../components/RetrievePlay";
-import { searchFromKb } from "../constants";
+import { searchFromTool } from "../constants";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
 
@@ -190,11 +190,8 @@ export function McpDetailPage() {
                     <div style={{ marginTop: 12 }}>
                       <RetrievePlay
                         sourceIds={current.sourceIds}
+                        search={searchFromTool(current)}
                         profile={current.profile}
-                        search={(() => {
-                          const kb = knowledgeBases.find((k) => k.id === current.kbId);
-                          return kb ? searchFromKb(kb) : undefined;
-                        })()}
                         chunks={chunks}
                         defaultQuery="七天无理由怎么退"
                       />

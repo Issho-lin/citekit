@@ -15,7 +15,7 @@ export function WorkbenchPage() {
       <div className="page-inner">
         <PageHero
           title="工作台"
-          desc="先把语料处理进库并调好检索，再封装成工具，最后用 MCP 发给其他 Agent。"
+          desc="先入库并试搜语料，再按职责拆成检索工具（范围+策略），最后用 MCP 发给 Agent。"
           action={
             <Button as={Link} to="/kb/new" leftIcon={<IconPlus />}>
               新建知识库

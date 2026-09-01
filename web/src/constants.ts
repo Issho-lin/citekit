@@ -12,7 +12,7 @@ export const PROFILES: { id: RetrievalProfile; label: string }[] = [
 
 export const SEARCH_MODES: { id: SearchMode; label: string; desc: string }[] = [
   { id: "embedding", label: "语义检索", desc: "按向量相似度召回" },
-  { id: "mix", label: "混合检索", desc: "全文 + 语义一起排" },
+  { id: "mix", label: "混合检索", desc: "向量检索 + 关键词搜索" },
   { id: "fullText", label: "全文检索", desc: "按关键词匹配" },
 ];
 
@@ -77,12 +77,25 @@ export const CHUNK_STRATEGIES = [
   "json-record",
 ];
 
-export const DEFAULT_SEARCH: SearchConfig = {
-  searchMode: "mix",
+export const DEFAULT_KB_SEARCH = {
+  searchMode: "mix" as SearchMode,
   similarity: 0.2,
   limit: 20,
   usingRerank: false,
 };
+
+export const DEFAULT_SEARCH: SearchConfig = {
+  ...DEFAULT_KB_SEARCH,
+  filterFirst: false,
+};
+
+export function profileFromSearch(search: SearchConfig): RetrievalProfile {
+  return search.filterFirst ? "filter_first" : "hybrid_balanced";
+}
+
+export function filtersFromSearch(search: SearchConfig): string[] {
+  return search.filterFirst ? ["warehouse"] : [];
+}
 
 export const SOURCE_LABEL = {
   upload: "本地文件",
@@ -150,5 +163,10 @@ export function searchFromKb(kb: KnowledgeBase): SearchConfig {
     similarity: kb.similarity,
     limit: kb.limit,
     usingRerank: kb.usingRerank,
+    filterFirst: false,
   };
+}
+
+export function searchFromTool(tool: { search: SearchConfig }): SearchConfig {
+  return { ...DEFAULT_SEARCH, ...tool.search };
 }

@@ -9,7 +9,7 @@ import {
   sources as seedSources,
   tools as seedTools,
 } from "./seed";
-import { DEFAULT_SEARCH, fillProcess } from "../constants";
+import { DEFAULT_KB_SEARCH, fillProcess, filtersFromSearch, profileFromSearch } from "../constants";
 import { matchesType, seedAiModels, seedChannels } from "./models";
 import type {
   AiModel,
@@ -22,8 +22,8 @@ import type {
   ModelTestResult,
   ModelType,
   ProcessConfig,
-  RetrievalProfile,
   RetrievalTool,
+  SearchConfig,
   Slice,
   Source,
   SourceType,
@@ -109,7 +109,7 @@ interface Store {
     description: string;
     kbId: string;
     sourceIds: string[];
-    profile: RetrievalProfile;
+    search: SearchConfig;
   }) => string;
   updateTool: (id: string, patch: Partial<RetrievalTool>) => void;
   removeTool: (id: string) => void;
@@ -273,7 +273,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           llmModel,
           vlmModel,
           rerankModel,
-          ...DEFAULT_SEARCH,
+          ...DEFAULT_KB_SEARCH,
           ...input,
         },
         ...prev,
@@ -511,11 +511,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       description: string;
       kbId: string;
       sourceIds: string[];
-      profile: RetrievalProfile;
+      search: SearchConfig;
     }) => {
       const id = nid("tool");
-      const requiredFilters = input.profile === "filter_first" ? ["warehouse"] : [];
-      setTools((prev) => [{ id, requiredFilters, ...input }, ...prev]);
+      const search = { ...input.search };
+      setTools((prev) => [
+        {
+          id,
+          name: input.name,
+          title: input.title,
+          description: input.description,
+          kbId: input.kbId,
+          sourceIds: input.sourceIds,
+          search,
+          profile: profileFromSearch(search),
+          requiredFilters: filtersFromSearch(search),
+        },
+        ...prev,
+      ]);
       return id;
     },
     [],
@@ -526,8 +539,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       prev.map((t) => {
         if (t.id !== id) return t;
         const next = { ...t, ...patch };
-        if (patch.profile) {
-          next.requiredFilters = patch.profile === "filter_first" ? ["warehouse"] : [];
+        if (patch.search) {
+          next.search = { ...t.search, ...patch.search };
+          next.profile = profileFromSearch(next.search);
+          next.requiredFilters = filtersFromSearch(next.search);
         }
         return next;
       }),

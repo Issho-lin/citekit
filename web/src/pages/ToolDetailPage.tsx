@@ -13,7 +13,7 @@ import {
 import { Crumb, Empty, NextBar, PageHero, Panel } from "../components/chrome";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RetrievePlay } from "../components/RetrievePlay";
-import { searchFromKb } from "../constants";
+import { searchFromTool } from "../constants";
 import { toolNext } from "../mock/pipeline";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
@@ -38,6 +38,7 @@ export function ToolDetailPage() {
     );
   }
 
+  const search = searchFromTool(tool);
   const next = toolNext(tool.id, endpoints);
   const schema = {
     name: tool.name,
@@ -53,6 +54,9 @@ export function ToolDetailPage() {
       },
     },
   };
+
+  const modeLabel =
+    search.searchMode === "embedding" ? "语义" : search.searchMode === "fullText" ? "全文" : "混合";
 
   return (
     <div className="page">
@@ -78,7 +82,7 @@ export function ToolDetailPage() {
           <TabPanels>
             <TabPanel px={0}>
               <div className="panel-grid">
-                <Panel title="描述与策略">
+                <Panel title="描述与范围">
                   <div className="form-stack">
                     <label>
                       描述
@@ -109,8 +113,10 @@ export function ToolDetailPage() {
                         .join("、") || "全库"}
                     </div>
                     <p className="page-desc">
-                      检索跟随知识库配置。要改策略请到{" "}
-                      <Link to={`/kb/${kb.id}?tab=test`}>搜索测试</Link>。
+                      当前策略：{modeLabel} · 相似度 {search.similarity} · 上限 {search.limit}
+                      {search.usingRerank ? " · 重排" : ""}
+                      {search.filterFirst ? " · 先按仓库过滤" : ""}
+                      。在「试检索」里改，只影响这把工具。
                     </p>
                   </div>
                 </Panel>
@@ -135,13 +141,16 @@ export function ToolDetailPage() {
               </ConfirmDialog>
             </TabPanel>
             <TabPanel px={0}>
-              <Panel title="用知识库当前检索配置，只搜勾选的集合">
+              <Panel title="只搜勾选的集合，策略保存在这把工具上">
                 <RetrievePlay
                   sourceIds={tool.sourceIds}
                   profile={tool.profile}
-                  search={searchFromKb(kb)}
+                  search={search}
+                  showFilterFirst
+                  onSearchChange={(next) => updateTool(tool.id, { search: next })}
                   chunks={chunks}
                   defaultQuery="七天无理由怎么退"
+                  placeholder="输入问题，测试这把工具的检索"
                 />
               </Panel>
             </TabPanel>

@@ -14,7 +14,7 @@ export function ToolsPage() {
       <div className="page-inner">
         <PageHero
           title="检索工具"
-          desc="一把工具对应一个知识库里的若干集合。需要多类知识时，让 Agent 并行调用多把工具。"
+          desc="一把工具 = 一个库里的若干集合 + 一套检索策略。同一库可建多把，让 Agent 并行调用。"
           action={
             <Button as={Link} to="/tools/new" leftIcon={<IconPlus />}>
               新建工具

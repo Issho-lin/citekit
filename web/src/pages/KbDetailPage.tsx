@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -90,7 +90,7 @@ export function KbDetailPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "test" ? "test" : "collection";
   const colParent = params.get("parent") || undefined;
-  const { knowledgeBases, sources, chunks, removeSource, addSource, updateKnowledgeBase } = useStore();
+  const { knowledgeBases, sources, chunks, removeSource, addSource } = useStore();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -318,13 +318,7 @@ export function KbDetailPage() {
             </>
           )}
           {tab === "test" && (
-            <RetrievePlay
-              sourceIds={sources.filter((s) => s.kbId === kb.id).map((s) => s.id)}
-              search={searchFromKb(kb)}
-              onSearchChange={(next) => updateKnowledgeBase(kb.id, next)}
-              chunks={chunks}
-              defaultQuery="七天无理由怎么退"
-            />
+            <KbSearchTest kbId={kb.id} />
           )}
         </div>
         <KbInfoPanel kb={kb} />
@@ -388,5 +382,81 @@ export function KbDetailPage() {
         删除后无法恢复，请确认你已经备份了相关数据。
       </ConfirmDialog>
     </div>
+  );
+}
+
+function KbSearchTest({ kbId }: { kbId: string }) {
+  const { knowledgeBases, sources, chunks, updateKnowledgeBase } = useStore();
+  const kb = knowledgeBases.find((k) => k.id === kbId);
+  const collections = useMemo(
+    () => sources.filter((s) => s.kbId === kbId && s.type !== "folder"),
+    [sources, kbId],
+  );
+  const allIds = collections.map((s) => s.id);
+  const [picked, setPicked] = useState<string[]>(allIds);
+
+  useEffect(() => {
+    const ids = collections.map((s) => s.id);
+    setPicked((prev) => {
+      const keep = prev.filter((id) => ids.includes(id));
+      const added = ids.filter((id) => !prev.includes(id));
+      return [...keep, ...added];
+    });
+  }, [collections]);
+
+  if (!kb) return null;
+
+  const allOn = allIds.length > 0 && allIds.every((id) => picked.includes(id));
+
+  return (
+    <>
+      <p className="page-desc" style={{ marginBottom: 12 }}>
+        这里只试搜语料，不决定 Agent 怎么搜。做成工具时会拷一份当时的参数。勾选只用于本次测试，不会保存。
+      </p>
+      <div className="field" style={{ marginBottom: 16 }}>
+        <span>数据集（默认全选）</span>
+        {collections.length === 0 ? (
+          <p className="page-desc">还没有数据集。</p>
+        ) : (
+          <>
+            <label className="source-check">
+              <Checkbox
+                isChecked={allOn}
+                onChange={(e) => setPicked(e.target.checked ? allIds : [])}
+              />
+              <span>全部</span>
+            </label>
+            {collections.map((s) => (
+              <label key={s.id} className="source-check">
+                <Checkbox
+                  isChecked={picked.includes(s.id)}
+                  onChange={(e) =>
+                    setPicked((prev) =>
+                      e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                    )
+                  }
+                />
+                <span>{s.title}</span>
+              </label>
+            ))}
+          </>
+        )}
+      </div>
+      <RetrievePlay
+        sourceIds={picked}
+        search={searchFromKb(kb)}
+        onSearchChange={(next) =>
+          updateKnowledgeBase(kb.id, {
+            searchMode: next.searchMode,
+            similarity: next.similarity,
+            limit: next.limit,
+            usingRerank: next.usingRerank,
+          })
+        }
+        chunks={chunks}
+        defaultQuery="七天无理由怎么退"
+        placeholder="输入问题，测试当前知识库的语料"
+      />
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   Box,
   Button,
@@ -26,11 +26,25 @@ export function MySelect({
   h?: string | number;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const [menuMinW, setMenuMinW] = useState<number>();
   const selected = list.find((item) => item.value === value);
   const hasDesc = list.some((item) => item.description);
 
+  function syncMenuWidth() {
+    const width = buttonRef.current?.getBoundingClientRect().width;
+    if (width) setMenuMinW(Math.ceil(width));
+  }
+
+  const minW = menuMinW ? `${menuMinW}px` : w;
+
   return (
-    <Menu autoSelect={false} strategy="fixed" placement="bottom-start">
+    <Menu
+      autoSelect={false}
+      strategy="fixed"
+      placement="bottom-start"
+      matchWidth={!hasDesc}
+      onOpen={syncMenuWidth}
+    >
       <MenuButton
         ref={buttonRef}
         as={Button}
@@ -70,9 +84,9 @@ export function MySelect({
         {selected?.label ?? placeholder}
       </MenuButton>
       <MenuList
-        minW={buttonRef.current?.clientWidth ? `${buttonRef.current.clientWidth}px` : w}
-        w={hasDesc ? "max-content" : "100%"}
-        maxW="min(90vw, 520px)"
+        minW={minW}
+        w={hasDesc ? "max-content" : minW}
+        maxW="90vw"
         px="6px"
         py="6px"
         border="1px solid #fff"

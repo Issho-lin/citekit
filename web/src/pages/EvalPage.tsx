@@ -4,12 +4,12 @@ import { Button, Input } from "@chakra-ui/react";
 import { DataTable, Empty, PageHero, Panel } from "../components/chrome";
 import { MySelect } from "../components/MySelect";
 import { retrieve } from "../mock/retrieve";
-import { searchFromKb } from "../constants";
+import { searchFromTool } from "../constants";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
 
 export function EvalPage() {
-  const { evalCases, tools, knowledgeBases, chunks, addEvalCase } = useStore();
+  const { evalCases, tools, chunks, addEvalCase } = useStore();
   const toast = useToast();
   const [rows, setRows] = useState<{ id: string; pass: boolean | null; detail: string }[]>(
     () => evalCases.map((c) => ({ id: c.id, pass: null, detail: "未跑" })),
@@ -17,19 +17,20 @@ export function EvalPage() {
   const [query, setQuery] = useState("");
   const [toolId, setToolId] = useState(tools[0]?.id ?? "");
   const [expect, setExpect] = useState("");
+  const [warehouse, setWarehouse] = useState("");
+  const selected = tools.find((t) => t.id === toolId);
+  const needWarehouse = Boolean(selected?.search.filterFirst);
 
   function runAll() {
     const next = evalCases.map((c) => {
       const tool = tools.find((t) => t.id === c.toolId);
       if (!tool) return { id: c.id, pass: false, detail: "工具不存在" };
-      const kb = knowledgeBases.find((k) => k.id === tool.kbId);
       const result = retrieve(
         {
-          sliceId: tool.sliceId,
           sourceIds: tool.sourceIds,
           query: c.query,
           profile: tool.profile,
-          search: kb ? searchFromKb(kb) : undefined,
+          search: searchFromTool(tool),
           warehouse: c.warehouse,
         },
         chunks,
@@ -57,9 +58,19 @@ export function EvalPage() {
       toast("请填写问句、工具和应命中定位");
       return;
     }
-    addEvalCase({ query: query.trim(), toolId, expect: expect.trim() });
+    if (needWarehouse && !warehouse.trim()) {
+      toast("这把工具需要填写仓库");
+      return;
+    }
+    addEvalCase({
+      query: query.trim(),
+      toolId,
+      expect: expect.trim(),
+      warehouse: needWarehouse ? warehouse.trim() : undefined,
+    });
     setQuery("");
     setExpect("");
+    setWarehouse("");
     toast("用例已添加，请再跑一遍");
   }
 
@@ -68,7 +79,7 @@ export function EvalPage() {
       <div className="page-inner">
         <PageHero
           title="评测"
-          desc="金标问句绑定工具。策略或切片变更后应回归；未达门禁不要把 MCP 标成 prod。"
+          desc="金标问句绑定工具，按该工具自己的范围和策略跑。未达门禁不要把 MCP 标成 prod。"
           action={<Button onClick={runAll}>跑一遍</Button>}
         />
         <Panel title="添加用例">
@@ -84,6 +95,14 @@ export function EvalPage() {
               onChange={setToolId}
               list={tools.map((t) => ({ label: t.name, value: t.id }))}
             />
+            {needWarehouse && (
+              <Input
+                maxW="140px"
+                placeholder="仓库，如华北"
+                value={warehouse}
+                onChange={(e) => setWarehouse(e.target.value)}
+              />
+            )}
             <Input
               placeholder="应命中 locator"
               value={expect}
@@ -101,13 +120,16 @@ export function EvalPage() {
               const tool = tools.find((t) => t.id === c.toolId);
               return (
                 <tr key={c.id}>
-                  <td>{c.query}</td>
+                  <td>
+                    {c.query}
+                    {c.warehouse ? <div className="mono">{c.warehouse}</div> : null}
+                  </td>
                   <td>
                     {tool ? <Link to={`/tools/${tool.id}`}>{tool.name}</Link> : c.toolId}
                   </td>
                   <td className="mono">{c.expect}</td>
                   <td>
-                    {r?.pass === null ? "未跑" : r?.pass ? "通过" : "未过"}
+                    {r?.pass === null || r === undefined ? "未跑" : r.pass ? "通过" : "未过"}
                     <div className="mono">{r?.detail}</div>
                   </td>
                 </tr>

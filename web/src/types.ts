@@ -58,6 +58,7 @@ export interface SearchConfig {
   similarity: number;
   limit: number;
   usingRerank: boolean;
+  filterFirst: boolean;
 }
 
 export interface ApiDatasetServer {
@@ -128,6 +129,7 @@ export interface RetrievalTool {
   kbId: string;
   sourceIds: string[];
   sliceId?: string;
+  search: SearchConfig;
   profile: RetrievalProfile;
   requiredFilters: string[];
 }

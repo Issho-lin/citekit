@@ -33,8 +33,12 @@ export function retrieve(
   input: RetrieveInput,
   allChunks: Chunk[],
 ): { hits: Hit[]; message?: string } {
+  if (input.sourceIds && input.sourceIds.length === 0) {
+    return { hits: [], message: "请至少勾选一个数据集。" };
+  }
+
   let pool = allChunks;
-  if (input.sourceIds?.length) {
+  if (input.sourceIds) {
     pool = pool.filter((c) => c.sourceId && input.sourceIds!.includes(c.sourceId));
   } else if (input.sliceIds?.length) {
     pool = pool.filter((c) => input.sliceIds!.includes(c.sliceId));

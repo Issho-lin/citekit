@@ -1,4 +1,4 @@
-import { DEFAULT_PROCESS, DEFAULT_SEARCH, fillProcess } from "../constants";
+import { DEFAULT_PROCESS, DEFAULT_KB_SEARCH, DEFAULT_SEARCH, fillProcess } from "../constants";
 import type {
   Chunk,
   EvalCase,
@@ -25,7 +25,7 @@ export const knowledgeBases: KnowledgeBase[] = [
     docCount: 6,
     kind: "dataset",
     ...models,
-    ...DEFAULT_SEARCH,
+    ...DEFAULT_KB_SEARCH,
     usingRerank: true,
   },
   {
@@ -36,7 +36,7 @@ export const knowledgeBases: KnowledgeBase[] = [
     docCount: 0,
     kind: "dataset",
     ...models,
-    ...DEFAULT_SEARCH,
+    ...DEFAULT_KB_SEARCH,
   },
 ];
 
@@ -142,9 +142,10 @@ export const tools: RetrievalTool[] = [
     description:
       "仅覆盖中国大陆七天无理由与质量问题退货。不含海外仓、延保。返回带出处的制度片段。",
     kbId: "kb_aftersales",
-    sourceIds: ["src_1", "src_4"],
+    sourceIds: ["src_1", "src_3", "src_4"],
     sliceId: "slice_refund",
-    profile: "hybrid_rerank_strict",
+    search: { ...DEFAULT_SEARCH, usingRerank: true },
+    profile: "hybrid_balanced",
     requiredFilters: [],
   },
   {
@@ -155,6 +156,7 @@ export const tools: RetrievalTool[] = [
     kbId: "kb_aftersales",
     sourceIds: ["src_2"],
     sliceId: "slice_freight",
+    search: { ...DEFAULT_SEARCH },
     profile: "hybrid_balanced",
     requiredFilters: [],
   },
@@ -166,6 +168,7 @@ export const tools: RetrievalTool[] = [
     kbId: "kb_aftersales",
     sourceIds: ["src_5"],
     sliceId: "slice_sku",
+    search: { ...DEFAULT_SEARCH, filterFirst: true },
     profile: "filter_first",
     requiredFilters: ["warehouse"],
   },

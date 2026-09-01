@@ -7,6 +7,97 @@ import { Empty } from "./chrome";
 import { FgSlider } from "./FgSlider";
 import { IconSearch } from "./icons";
 import { MySelect } from "./MySelect";
+import { QuestionTip } from "./QuestionTip";
+
+function SwitchField({
+  title,
+  tip,
+  checked,
+  onChange,
+}: {
+  title: string;
+  tip: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="fg-slider">
+      <div className="fg-slider-label">
+        {title}
+        <QuestionTip label={tip} maxW="360px" />
+      </div>
+      <Switch size="md" isChecked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </div>
+  );
+}
+
+export function SearchParamsFields({
+  search,
+  onChange,
+  showFilterFirst = false,
+}: {
+  search: SearchConfig;
+  onChange: (next: SearchConfig) => void;
+  showFilterFirst?: boolean;
+}) {
+  function patch(next: Partial<SearchConfig>) {
+    onChange({ ...search, ...next });
+  }
+
+  return (
+    <div className="search-params">
+      <div className="fg-slider">
+        <div className="fg-slider-label">
+          检索模式
+          <QuestionTip
+            maxW="360px"
+            label={"语义：按意思找，适合「怎么退货」这类问法。\n全文：按关键词命中，适合货号、专名。\n混合：两种一起排，一般作为默认。"}
+          />
+        </div>
+        <div className="fg-slider-control">
+          <MySelect
+            h="32px"
+            value={search.searchMode}
+            onChange={(next) => patch({ searchMode: next as SearchConfig["searchMode"] })}
+            list={SEARCH_MODES.map((m) => ({ label: m.label, value: m.id, description: m.desc }))}
+          />
+        </div>
+      </div>
+      <FgSlider
+        label="相似度"
+        tip="低于该分数的结果会被丢掉。调高更准但更容易搜空，调低更全但噪声更多。"
+        min={0}
+        max={1}
+        step={0.05}
+        value={Number(search.similarity.toFixed(2))}
+        onChange={(similarity) => patch({ similarity })}
+      />
+      <FgSlider
+        label="引用上限"
+        tip="一次最多返回多少条给 Agent。太多会占上下文，太少可能漏依据。"
+        min={1}
+        max={50}
+        step={1}
+        value={search.limit}
+        onChange={(limit) => patch({ limit })}
+      />
+      <SwitchField
+        title="重排"
+        tip="先召回一批候选，再用重排模型精排。更准、更慢，且需要已配置重排模型。制度问答建议开，纯关键词查找可关。"
+        checked={search.usingRerank}
+        onChange={(usingRerank) => patch({ usingRerank })}
+      />
+      {showFilterFirst && (
+        <SwitchField
+          title="先按仓库过滤"
+          tip="调用时必须带上仓库（如华北、华南），只在该仓数据里检索，避免全表语义碰运气。适合报价、库存；制度、FAQ 不要开。Agent 入参字段名是 warehouse。"
+          checked={search.filterFirst}
+          onChange={(filterFirst) => patch({ filterFirst })}
+        />
+      )}
+    </div>
+  );
+}
 
 export function RetrievePlay({
   sliceId,
@@ -15,8 +106,10 @@ export function RetrievePlay({
   profile,
   search,
   onSearchChange,
+  showFilterFirst = false,
   chunks,
   defaultQuery = "",
+  placeholder = "输入问题，测试检索",
 }: {
   sliceId?: string;
   sliceIds?: string[];
@@ -24,18 +117,17 @@ export function RetrievePlay({
   profile?: RetrievalProfile;
   search?: SearchConfig;
   onSearchChange?: (next: SearchConfig) => void;
+  showFilterFirst?: boolean;
   chunks: Chunk[];
   defaultQuery?: string;
+  placeholder?: string;
 }) {
   const [query, setQuery] = useState(defaultQuery);
   const [warehouse, setWarehouse] = useState("华北");
   const [hits, setHits] = useState<Hit[]>([]);
   const [message, setMessage] = useState<string | undefined>();
   const [ran, setRan] = useState(false);
-
-  function patchSearch(next: Partial<SearchConfig>) {
-    if (search && onSearchChange) onSearchChange({ ...search, ...next });
-  }
+  const filterFirst = search?.filterFirst || profile === "filter_first";
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -45,9 +137,9 @@ export function RetrievePlay({
         sliceIds,
         sourceIds,
         query,
-        profile,
+        profile: filterFirst ? "filter_first" : profile,
         search,
-        warehouse: profile === "filter_first" ? warehouse : undefined,
+        warehouse: filterFirst ? warehouse : undefined,
       },
       chunks,
     );
@@ -58,54 +150,18 @@ export function RetrievePlay({
 
   return (
     <div>
-      {search && (
-        <div className="search-params">
-          <label className="fg-field">
-            <span>检索模式</span>
-            <MySelect
-              value={search.searchMode}
-              onChange={(next) => patchSearch({ searchMode: next as SearchConfig["searchMode"] })}
-              list={SEARCH_MODES.map((m) => ({ label: m.label, value: m.id }))}
-            />
-          </label>
-          <FgSlider
-            label="相似度"
-            min={0}
-            max={1}
-            step={0.05}
-            value={Number(search.similarity.toFixed(2))}
-            onChange={(similarity) => patchSearch({ similarity })}
-          />
-          <FgSlider
-            label="引用上限"
-            min={1}
-            max={50}
-            step={1}
-            value={search.limit}
-            onChange={(limit) => patchSearch({ limit })}
-          />
-          <label className="switch-row">
-            重排
-            <Switch
-              isChecked={search.usingRerank}
-              onChange={(e) => patchSearch({ usingRerank: e.target.checked })}
-            />
-          </label>
-        </div>
+      {search && onSearchChange && (
+        <SearchParamsFields search={search} onChange={onSearchChange} showFilterFirst={showFilterFirst} />
       )}
       <form onSubmit={onSearch} className="search-bar">
         <IconSearch />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="输入问题，测试当前知识库的检索"
-        />
-        {profile === "filter_first" && (
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={placeholder} />
+        {filterFirst && (
           <Input
             maxW="120px"
             value={warehouse}
             onChange={(e) => setWarehouse(e.target.value)}
-            placeholder="warehouse"
+            placeholder="仓库，如华北"
           />
         )}
         <Button type="submit">检索测试</Button>

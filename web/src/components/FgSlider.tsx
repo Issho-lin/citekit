@@ -6,6 +6,7 @@ import {
   SliderThumb,
   SliderTrack,
 } from "@chakra-ui/react";
+import { QuestionTip } from "./QuestionTip";
 
 export function FgSlider({
   label,
@@ -14,6 +15,7 @@ export function FgSlider({
   max,
   step,
   onChange,
+  tip,
 }: {
   label: string;
   value: number;
@@ -21,10 +23,14 @@ export function FgSlider({
   max: number;
   step: number;
   onChange: (n: number) => void;
+  tip?: string;
 }) {
   return (
     <div className="fg-slider">
-      <div className="fg-slider-label">{label}</div>
+      <div className="fg-slider-label">
+        {label}
+        {tip ? <QuestionTip label={tip} maxW="360px" /> : null}
+      </div>
       <Slider
         value={value}
         min={min}
