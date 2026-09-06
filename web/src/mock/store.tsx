@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { api } from "../api";
 import { chunksFromSources } from "./chunks";
 import {
   chunks as seedChunks,
@@ -10,7 +11,6 @@ import {
   tools as seedTools,
 } from "./seed";
 import { DEFAULT_KB_SEARCH, fillProcess, filtersFromSearch, profileFromSearch } from "../constants";
-import { matchesType, seedAiModels, seedChannels } from "./models";
 import type {
   AiModel,
   ApiDatasetServer,
@@ -18,9 +18,8 @@ import type {
   EvalCase,
   KnowledgeBase,
   McpEndpoint,
-  ModelChannel,
+  ModelProvider,
   ModelTestResult,
-  ModelType,
   ProcessConfig,
   RetrievalTool,
   SearchConfig,
@@ -52,19 +51,17 @@ interface Store {
   rerankModel: string;
   rewriteFallback: boolean;
   aiModels: AiModel[];
-  channels: ModelChannel[];
+  providers: ModelProvider[];
   setVectorModel: (v: string) => void;
   setLlmModel: (v: string) => void;
   setVlmModel: (v: string) => void;
   setRerankModel: (v: string) => void;
   setRewriteFallback: (v: boolean) => void;
-  addAiModel: (model: AiModel) => string | undefined;
-  updateAiModel: (model: string, patch: Partial<AiModel>) => void;
-  removeAiModel: (model: string) => void;
-  addChannel: (channel: Omit<ModelChannel, "id">) => string;
-  updateChannel: (id: string, patch: Partial<ModelChannel>) => void;
-  removeChannel: (id: string) => void;
-  testAiModel: (model: string, channelId?: string) => Promise<ModelTestResult>;
+  addAiModel: (model: AiModel) => Promise<string | undefined>;
+  updateAiModel: (model: string, patch: Partial<AiModel>) => Promise<void>;
+  removeAiModel: (model: string) => Promise<void>;
+  testAiModel: (model: string) => Promise<ModelTestResult>;
+  updateProvider: (id: string, patch: { apiKey?: string; clearApiKey?: boolean }) => Promise<void>;
   addKnowledgeBase: (input: {
     name: string;
     domain: string;
@@ -130,122 +127,118 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [endpoints, setEndpoints] = useState(seedEndpoints);
   const [chunks, setChunks] = useState(seedChunks);
   const [evalCases, setEvalCases] = useState(seedEval);
-  const [vectorModel, setVectorModel] = useState("bge-m3");
-  const [llmModel, setLlmModel] = useState("gpt-4o-mini");
-  const [vlmModel, setVlmModel] = useState("gpt-4o-mini");
-  const [rerankModel, setRerankModel] = useState("bge-reranker-v2-m3");
-  const [rewriteFallback, setRewriteFallback] = useState(false);
-  const [aiModels, setAiModels] = useState(seedAiModels);
-  const [channels, setChannels] = useState(seedChannels);
+  const [vectorModel, setVectorModelState] = useState("");
+  const [llmModel, setLlmModelState] = useState("");
+  const [vlmModel, setVlmModelState] = useState("");
+  const [rerankModel, setRerankModelState] = useState("");
+  const [rewriteFallback, setRewriteFallbackState] = useState(false);
+  const [aiModels, setAiModels] = useState<AiModel[]>([]);
+  const [providers, setProviders] = useState<ModelProvider[]>([]);
 
-  const pickFallback = useCallback((type: ModelType, except?: string) => {
-    return aiModels.find((m) => m.isActive && matchesType(m, type) && m.model !== except)?.model;
-  }, [aiModels]);
-
-  const addAiModel = useCallback((model: AiModel) => {
-    const id = model.model.trim();
-    if (!id) return undefined;
-    let duplicated = false;
-    setAiModels((prev) => {
-      if (prev.some((m) => m.model === id)) {
-        duplicated = true;
-        return prev;
-      }
-      return [{ ...model, model: id, isCustom: true, isActive: true }, ...prev];
-    });
-    return duplicated ? undefined : id;
+  const applyWorkspace = useCallback((ws: {
+    llmModel: string;
+    vectorModel: string;
+    vlmModel: string;
+    rerankModel: string;
+    rewriteFallback: boolean;
+  }) => {
+    setLlmModelState(ws.llmModel);
+    setVectorModelState(ws.vectorModel);
+    setVlmModelState(ws.vlmModel);
+    setRerankModelState(ws.rerankModel);
+    setRewriteFallbackState(ws.rewriteFallback);
   }, []);
 
-  const updateAiModel = useCallback(
-    (model: string, patch: Partial<AiModel>) => {
-      setAiModels((prev) => prev.map((m) => (m.model === model ? { ...m, ...patch, model: m.model } : m)));
-      if (patch.isActive === false) {
-        if (vectorModel === model) {
-          const next = pickFallback("embedding", model);
-          if (next) setVectorModel(next);
-        }
-        if (llmModel === model) {
-          const next = pickFallback("llm", model);
-          if (next) setLlmModel(next);
-        }
-        if (vlmModel === model) {
-          const next = pickFallback("vlm", model);
-          if (next) setVlmModel(next);
-        }
-        if (rerankModel === model) {
-          const next = pickFallback("rerank", model);
-          if (next) setRerankModel(next);
-        }
-      }
+  const reloadCatalog = useCallback(async () => {
+    const [models, ws, providerList] = await Promise.all([
+      api.listModels(),
+      api.getWorkspace(),
+      api.listProviders(),
+    ]);
+    setAiModels(models);
+    setProviders(providerList);
+    applyWorkspace(ws);
+  }, [applyWorkspace]);
+
+  useEffect(() => {
+    void reloadCatalog().catch((err: unknown) => {
+      console.error("加载模型配置失败", err);
+    });
+  }, [reloadCatalog]);
+
+  const persistWorkspace = useCallback(
+    async (patch: {
+      llmModel?: string;
+      vectorModel?: string;
+      vlmModel?: string;
+      rerankModel?: string;
+      rewriteFallback?: boolean;
+    }) => {
+      applyWorkspace(await api.patchWorkspace(patch));
     },
-    [llmModel, pickFallback, rerankModel, vectorModel, vlmModel],
+    [applyWorkspace],
+  );
+
+  const setVectorModel = useCallback((v: string) => {
+    setVectorModelState(v);
+    void persistWorkspace({ vectorModel: v });
+  }, [persistWorkspace]);
+  const setLlmModel = useCallback((v: string) => {
+    setLlmModelState(v);
+    void persistWorkspace({ llmModel: v });
+  }, [persistWorkspace]);
+  const setVlmModel = useCallback((v: string) => {
+    setVlmModelState(v);
+    void persistWorkspace({ vlmModel: v });
+  }, [persistWorkspace]);
+  const setRerankModel = useCallback((v: string) => {
+    setRerankModelState(v);
+    void persistWorkspace({ rerankModel: v });
+  }, [persistWorkspace]);
+  const setRewriteFallback = useCallback((v: boolean) => {
+    setRewriteFallbackState(v);
+    void persistWorkspace({ rewriteFallback: v });
+  }, [persistWorkspace]);
+
+  const addAiModel = useCallback(async (model: AiModel) => {
+    const created = await api.createModel(model);
+    await reloadCatalog();
+    return created.model;
+  }, [reloadCatalog]);
+
+  const updateAiModel = useCallback(
+    async (model: string, patch: Partial<AiModel>) => {
+      await api.patchModel(model, patch);
+      await reloadCatalog();
+    },
+    [reloadCatalog],
   );
 
   const removeAiModel = useCallback(
-    (model: string) => {
-      setAiModels((prev) => prev.filter((m) => m.model !== model));
-      setChannels((prev) => prev.map((c) => ({ ...c, modelIds: c.modelIds.filter((id) => id !== model) })));
-      if (vectorModel === model) {
-        const next = pickFallback("embedding", model);
-        if (next) setVectorModel(next);
-      }
-      if (llmModel === model) {
-        const next = pickFallback("llm", model);
-        if (next) setLlmModel(next);
-      }
-      if (vlmModel === model) {
-        const next = pickFallback("vlm", model);
-        if (next) setVlmModel(next);
-      }
-      if (rerankModel === model) {
-        const next = pickFallback("rerank", model);
-        if (next) setRerankModel(next);
-      }
+    async (model: string) => {
+      await api.deleteModel(model);
+      await reloadCatalog();
     },
-    [llmModel, pickFallback, rerankModel, vectorModel, vlmModel],
+    [reloadCatalog],
   );
 
-  const addChannel = useCallback((channel: Omit<ModelChannel, "id">) => {
-    const id = nid("ch");
-    setChannels((prev) => [{ ...channel, id }, ...prev]);
-    return id;
-  }, []);
-
-  const updateChannel = useCallback((id: string, patch: Partial<ModelChannel>) => {
-    setChannels((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
-  }, []);
-
-  const removeChannel = useCallback((id: string) => {
-    setChannels((prev) => prev.filter((c) => c.id !== id));
-  }, []);
-
   const testAiModel = useCallback(
-    async (model: string, channelId?: string): Promise<ModelTestResult> => {
-      const item = aiModels.find((m) => m.model === model);
-      const wait = 420 + Math.floor(Math.random() * 780);
-      await new Promise((r) => setTimeout(r, wait));
-      if (!item) return { ok: false, ms: wait, message: "模型不存在" };
-      const customOk = Boolean(item.requestUrl?.trim());
-      const channel = channelId
-        ? channels.find((c) => c.id === channelId)
-        : channels
-            .filter((c) => c.enabled && c.modelIds.includes(model))
-            .sort((a, b) => b.priority - a.priority)[0];
-      if (!customOk && !channel) {
-        return { ok: false, ms: wait, message: "没有可用渠道，请先在「模型渠道」中配置" };
+    async (model: string): Promise<ModelTestResult> => {
+      try {
+        return await api.testModel(model);
+      } catch (err) {
+        return { ok: false, ms: 0, message: err instanceof Error ? err.message : "测试失败" };
       }
-      if (channel && !channel.enabled) {
-        return { ok: false, ms: wait, message: "渠道已禁用" };
-      }
-      if (!customOk && channel && !channel.apiKey.trim()) {
-        return { ok: false, ms: wait, message: "渠道缺少 API 密钥" };
-      }
-      if (channel && channelId && !channel.modelIds.includes(model)) {
-        return { ok: false, ms: wait, message: "该渠道未勾选此模型" };
-      }
-      return { ok: true, ms: wait, message: "连接正常" };
     },
-    [aiModels, channels],
+    [],
+  );
+
+  const updateProvider = useCallback(
+    async (id: string, patch: { apiKey?: string; clearApiKey?: boolean }) => {
+      await api.patchProvider(id, patch);
+      await reloadCatalog();
+    },
+    [reloadCatalog],
   );
 
   const addKnowledgeBase = useCallback(
@@ -621,7 +614,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       rerankModel,
       rewriteFallback,
       aiModels,
-      channels,
+      providers,
       setVectorModel,
       setLlmModel,
       setVlmModel,
@@ -630,10 +623,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addAiModel,
       updateAiModel,
       removeAiModel,
-      addChannel,
-      updateChannel,
-      removeChannel,
       testAiModel,
+      updateProvider,
       addKnowledgeBase,
       updateKnowledgeBase,
       removeKnowledgeBase,
@@ -670,14 +661,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       rerankModel,
       rewriteFallback,
       aiModels,
-      channels,
+      providers,
+      setVectorModel,
+      setLlmModel,
+      setVlmModel,
+      setRerankModel,
+      setRewriteFallback,
       addAiModel,
       updateAiModel,
       removeAiModel,
-      addChannel,
-      updateChannel,
-      removeChannel,
       testAiModel,
+      updateProvider,
       addKnowledgeBase,
       updateKnowledgeBase,
       removeKnowledgeBase,

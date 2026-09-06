@@ -5,6 +5,12 @@ dist
 .env.*
 !.env.example
 
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
 # FastGPT 仅作本地对照，不进本仓库
 FastGPT/
 

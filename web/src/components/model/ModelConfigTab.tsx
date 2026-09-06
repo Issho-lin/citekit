@@ -14,27 +14,31 @@ import {
 } from "@chakra-ui/react";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { MySelect } from "../MySelect";
-import { IconEdit, IconPlus, IconSearch, IconSend, IconSwap, IconTrash } from "../icons";
-import { MODEL_TYPE_META, PROVIDERS, blankModel, providerOf } from "../../mock/models";
+import { IconEdit, IconPlus, IconSearch, IconSend, IconTrash } from "../icons";
+import { MODEL_TYPE_META, blankModel } from "../../mock/models";
 import { useStore } from "../../mock/store";
 import { useToast } from "../Toast";
 import type { AiModel, ModelType } from "../../types";
 import { ModelEditModal } from "./ModelEditModal";
 import { DefaultModelsModal } from "./DefaultModelsModal";
-import { ModelTypeTag, ProviderAvatar } from "./shared";
+import { ModelTypeTag, ProviderAvatar, providerOf } from "./shared";
 
 export function ModelConfigTab() {
   const toast = useToast();
-  const { aiModels, updateAiModel, addAiModel, removeAiModel, testAiModel } = useStore();
+  const { aiModels, providers, updateAiModel, addAiModel, removeAiModel, testAiModel } = useStore();
   const [provider, setProvider] = useState("");
   const [modelType, setModelType] = useState<ModelType | "">("");
   const [search, setSearch] = useState("");
   const [showActive, setShowActive] = useState(false);
-  const [showModelId, setShowModelId] = useState(true);
   const [edit, setEdit] = useState<AiModel | null>(null);
   const [delId, setDelId] = useState<string | null>(null);
   const [defaultOpen, setDefaultOpen] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+
+  const providerOptions = useMemo(() => {
+    const used = new Set(aiModels.map((m) => m.provider));
+    return providers.filter((p) => p.isVisible || used.has(p.id));
+  }, [aiModels, providers]);
 
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -42,41 +46,38 @@ export function ModelConfigTab() {
       if (provider && m.provider !== provider) return false;
       if (modelType && m.type !== modelType) return false;
       if (showActive && !m.isActive) return false;
-      if (q && !`${m.model} ${m.name}`.toLowerCase().includes(q)) return false;
+      if (q && !m.model.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [aiModels, provider, modelType, search, showActive]);
 
   const activeCount = aiModels.filter((m) => m.isActive).length;
 
-  async function onTest(model: string) {
-    setTesting(model);
-    const res = await testAiModel(model);
-    setTesting(null);
-    toast(res.ok ? `${model} · ${res.ms}ms · ${res.message}` : `${model} 失败：${res.message}`);
-  }
-
-  function onSave(next: AiModel) {
+  async function onSave(next: AiModel) {
     if (!next.model) {
       toast("请填写模型 ID");
       return;
     }
-    const exists = aiModels.some((m) => m.model === next.model);
-    if (edit && !edit.model) {
-      const id = addAiModel(next);
-      if (!id) {
-        toast("模型 ID 已存在");
+    try {
+      if (edit && !edit.model) {
+        await addAiModel(next);
+        toast("已新增");
+      } else if (edit) {
+        const taken = aiModels.some((m) => m.model === next.model && m.model !== edit.model);
+        if (taken) {
+          toast("模型 ID 已存在");
+          return;
+        }
+        await updateAiModel(edit.model, next);
+        toast("已保存");
+      } else {
+        toast("模型不存在");
         return;
       }
-      toast("已新增");
-    } else if (exists) {
-      updateAiModel(next.model, next);
-      toast("已保存");
-    } else {
-      toast("模型不存在");
-      return;
+      setEdit(null);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "保存失败");
     }
-    setEdit(null);
   }
 
   return (
@@ -91,7 +92,14 @@ export function ModelConfigTab() {
             h="32px"
             value={provider}
             onChange={setProvider}
-            list={[{ label: "全部", value: "" }, ...PROVIDERS.map((p) => ({ label: p.name, value: p.id }))]}
+            list={[
+              { label: "全部", value: "" },
+              ...providerOptions.map((p) => ({
+                label: p.name,
+                value: p.id,
+                icon: <ProviderAvatar provider={p.id} size={16} />,
+              })),
+            ]}
           />
         </HStack>
         <HStack spacing={2} minW="160px">
@@ -109,8 +117,16 @@ export function ModelConfigTab() {
         <label className="ds-search" style={{ width: 220, height: 32, marginLeft: "auto" }}>
           <IconSearch size={14} />
           <input
+            type="search"
+            name="citekit-model-filter"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            data-1p-ignore=""
+            data-lpignore="true"
             value={search}
-            placeholder="搜索模型名 / ID"
+            placeholder="搜索模型 ID"
             onChange={(e) => setSearch(e.target.value)}
           />
         </label>
@@ -135,12 +151,7 @@ export function ModelConfigTab() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>
-                <button type="button" className="th-swap" onClick={() => setShowModelId((v) => !v)}>
-                  {showModelId ? "模型 ID" : "模型名"}
-                  <IconSwap />
-                </button>
-              </th>
+              <th>模型 ID</th>
               <th>类型</th>
               <th>
                 <button
@@ -168,14 +179,12 @@ export function ModelConfigTab() {
                     <Flex align="center" gap={2}>
                       <ProviderAvatar provider={m.provider} />
                       <Box>
-                        <Box fontWeight={500}>{showModelId ? m.model : m.name}</Box>
+                        <Box fontWeight={500} className="mono">
+                          {m.model}
+                        </Box>
                         <Box className="model-caps">
-                          <span>{providerOf(m.provider).name}</span>
-                          {m.vision ? <span>视觉</span> : null}
-                          {m.toolChoice ? <span>工具调用</span> : null}
-                          {m.maxContext ? <span>{Math.round(m.maxContext / 1000)}k 上下文</span> : null}
-                          {m.maxToken && m.type !== "llm" ? <span>{m.maxToken} token</span> : null}
-                          {m.isCustom ? <span>自定义</span> : null}
+                          <span>{providerOf(providers, m.provider).name}</span>
+                          {m.mappedModel ? <span>映射 {m.mappedModel}</span> : null}
                         </Box>
                       </Box>
                     </Flex>
@@ -192,14 +201,22 @@ export function ModelConfigTab() {
                   </td>
                   <td>
                     <HStack spacing={1} justify="flex-end">
-                      <Tooltip label="测试模型">
+                      <Tooltip label="测试连接">
                         <IconButton
-                          aria-label="测试"
+                          aria-label="测试连接"
                           size="xsSquare"
                           variant="ghost"
                           isLoading={testing === m.model}
                           icon={<IconSend size={14} />}
-                          onClick={() => onTest(m.model)}
+                          onClick={async () => {
+                            setTesting(m.model);
+                            try {
+                              const res = await testAiModel(m.model);
+                              toast(res.ok ? `连接正常（${(res.ms / 1000).toFixed(2)}s）` : res.message);
+                            } finally {
+                              setTesting(null);
+                            }
+                          }}
                         />
                       </Tooltip>
                       <Tooltip label="编辑">
@@ -211,18 +228,16 @@ export function ModelConfigTab() {
                           onClick={() => setEdit(m)}
                         />
                       </Tooltip>
-                      {m.isCustom ? (
-                        <Tooltip label="删除">
-                          <IconButton
-                            aria-label="删除"
-                            size="xsSquare"
-                            variant="ghost"
-                            color="red.500"
-                            icon={<IconTrash />}
-                            onClick={() => setDelId(m.model)}
-                          />
-                        </Tooltip>
-                      ) : null}
+                      <Tooltip label="删除">
+                        <IconButton
+                          aria-label="删除"
+                          size="xsSquare"
+                          variant="ghost"
+                          color="red.500"
+                          icon={<IconTrash />}
+                          onClick={() => setDelId(m.model)}
+                        />
+                      </Tooltip>
                     </HStack>
                   </td>
                 </tr>
@@ -239,13 +254,19 @@ export function ModelConfigTab() {
       <ConfirmDialog
         isOpen={!!delId}
         onClose={() => setDelId(null)}
-        title="删除这个自定义模型？"
-        onConfirm={() => {
-          if (delId) removeAiModel(delId);
-          toast("已删除");
+        title="删除这个模型？"
+        onConfirm={async () => {
+          if (!delId) return;
+          try {
+            await removeAiModel(delId);
+            toast("已删除");
+          } catch (err) {
+            toast(err instanceof Error ? err.message : "删除失败");
+            throw err;
+          }
         }}
       >
-        删除后，知识库和渠道里如果还引用它，需要重新选择模型。
+        删除后会从工作空间默认模型和知识库下拉里拿掉。重启服务不会自动加回来（除非库被清空后重新 seed）。
       </ConfirmDialog>
     </>
   );

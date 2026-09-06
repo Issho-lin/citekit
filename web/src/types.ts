@@ -183,20 +183,18 @@ export interface AiModel {
   normalization?: boolean;
   requestUrl?: string;
   requestAuth?: string;
+  hasRequestAuth?: boolean;
+  mappedModel?: string;
 }
 
-export type ChannelProtocol = "openai" | "azure" | "anthropic" | "google" | "ollama";
-
-export interface ModelChannel {
+export interface ModelProvider {
   id: string;
   name: string;
-  protocol: ChannelProtocol;
-  baseUrl: string;
-  apiKey: string;
-  modelIds: string[];
-  mapping: Record<string, string>;
-  enabled: boolean;
-  priority: number;
+  avatar: string;
+  order: number;
+  isVisible: boolean;
+  defaultBaseUrl?: string;
+  hasApiKey?: boolean;
 }
 
 export interface ModelTestResult {

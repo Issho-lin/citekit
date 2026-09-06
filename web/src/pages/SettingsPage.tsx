@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Box, Button, Flex, Input, Switch, Text } from "@chakra-ui/react";
 import { PageHero, Panel } from "../components/chrome";
-import { ChannelTab } from "../components/model/ChannelTab";
 import { ModelConfigTab } from "../components/model/ModelConfigTab";
+import { ProviderConfigTab } from "../components/model/ProviderConfigTab";
 import { DefaultModelsModal } from "../components/model/DefaultModelsModal";
 import { useStore } from "../mock/store";
 
-type Tab = "models" | "channels" | "workspace";
+type Tab = "models" | "providers" | "workspace";
 
 export function SettingsPage() {
   const [tab, setTab] = useState<Tab>("models");
@@ -17,25 +17,24 @@ export function SettingsPage() {
     rerankModel,
     rewriteFallback,
     setRewriteFallback,
-    aiModels,
   } = useStore();
   const [defaultOpen, setDefaultOpen] = useState(false);
 
-  const nameOf = (id: string) => aiModels.find((m) => m.model === id)?.name ?? id;
+  const nameOf = (id: string) => id;
 
   return (
     <div className="page">
       <div className="page-inner-wide">
         <PageHero
           title="设置"
-          desc="先配模型和渠道，知识库里的下拉才会有可选值。默认模型会带到新建知识库。"
+          desc="供应商可以统一保存密钥。模型会预填接口地址；已配置供应商密钥时，模型密钥可以留空。"
         />
         <div className="settings-tabs">
           <button type="button" className={tab === "models" ? "on" : ""} onClick={() => setTab("models")}>
             模型配置
           </button>
-          <button type="button" className={tab === "channels" ? "on" : ""} onClick={() => setTab("channels")}>
-            模型渠道
+          <button type="button" className={tab === "providers" ? "on" : ""} onClick={() => setTab("providers")}>
+            供应商
           </button>
           <button type="button" className={tab === "workspace" ? "on" : ""} onClick={() => setTab("workspace")}>
             工作空间
@@ -43,7 +42,7 @@ export function SettingsPage() {
         </div>
 
         {tab === "models" ? <ModelConfigTab /> : null}
-        {tab === "channels" ? <ChannelTab /> : null}
+        {tab === "providers" ? <ProviderConfigTab /> : null}
         {tab === "workspace" ? (
           <div className="panel-grid">
             <Panel title="工作空间">

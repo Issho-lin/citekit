@@ -22,7 +22,7 @@ export function ConfirmDialog({
   title: string;
   children: ReactNode;
   confirmText?: string;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }) {
   const cancelRef = useRef(null);
   return (
@@ -41,8 +41,14 @@ export function ConfirmDialog({
               colorScheme="red"
               ml={3}
               onClick={() => {
-                onConfirm();
-                onClose();
+                void (async () => {
+                  try {
+                    await onConfirm();
+                    onClose();
+                  } catch {
+                    /* 调用方自己提示错误 */
+                  }
+                })();
               }}
             >
               {confirmText}
