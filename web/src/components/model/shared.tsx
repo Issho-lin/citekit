@@ -5,8 +5,7 @@ import type { ModelProvider, ModelType } from "../../types";
 
 export function providerOf(providers: ModelProvider[], id: string): ModelProvider {
   return (
-    providers.find((p) => p.id === id) ??
-    providers.find((p) => p.id === "Other") ?? {
+    providers.find((p) => p.id === id) ?? {
       id,
       name: id,
       avatar: "",
@@ -24,6 +23,10 @@ export function providerBaseUrl(providers: ModelProvider[], id: string) {
 
 export function pickerProviders(providers: ModelProvider[], keepId?: string) {
   return providers.filter((p) => p.isVisible || (keepId != null && p.id === keepId));
+}
+
+export function configProviders(providers: ModelProvider[]) {
+  return pickerProviders(providers).filter((p) => p.id !== "Other");
 }
 
 export function ProviderAvatar({ provider, size = 20 }: { provider: string; size?: number }) {

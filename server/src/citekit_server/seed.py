@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from citekit_server.db import AiModelRow, ProviderRow, WorkspaceRow
 
 # FastGPT ModelProviderMap（zh-CN）；图标来自 plugin 仓库 logo.svg，放在 web/public/providers
+# chat / embedding / rerank 的路径和请求体按供应商写在 provider_protocol.py
 PROVIDERS: list[dict] = [
     {"id": "OpenAI", "name": "OpenAI", "base": "https://api.openai.com/v1"},
     {"id": "Claude", "name": "Claude", "base": "https://api.anthropic.com/v1"},
@@ -38,7 +39,7 @@ PROVIDERS: list[dict] = [
     {"id": "Siliconflow", "name": "硅基流动", "base": "https://api.siliconflow.cn/v1"},
     {"id": "PPIO", "name": "PPIO", "base": "https://api.ppio.com/openai"},
     {"id": "SangforAICP", "name": "深信服", "base": "https://aicp.sangfor.com/v1"},
-    {"id": "Other", "name": "其他", "base": ""},
+    {"id": "Other", "name": "其他", "base": "", "visible": True},
 ]
 
 CATALOG: list[dict] = [
@@ -108,7 +109,7 @@ CATALOG: list[dict] = [
     {
         "id": "qwen-vl-plus",
         "name": "通义千问 VL Plus",
-        "type": "vlm",
+        "type": "llm",
         "provider": "Qwen",
         "is_custom": False,
         "vision": True,
@@ -136,6 +137,8 @@ def seed_providers(db: Session) -> None:
             row.avatar = avatar
             row.sort_order = index
             row.default_base_url = base
+            if "visible" in item:
+                row.is_visible = bool(item["visible"])
         else:
             db.add(
                 ProviderRow(
@@ -167,6 +170,7 @@ def seed_if_empty(db: Session) -> None:
                     is_active=item.get("is_active", True),
                     is_custom=item.get("is_custom", False),
                     vision=item.get("vision"),
+                    multimodal=item.get("multimodal"),
                     tool_choice=item.get("tool_choice"),
                     max_context=item.get("max_context"),
                     max_response=item.get("max_response"),
@@ -183,7 +187,7 @@ def seed_if_empty(db: Session) -> None:
                 llm_model="gpt-4o-mini",
                 vector_model="bge-m3",
                 vlm_model="gpt-4o-mini",
-                rerank_model="bge-reranker-v2-m3",
+                rerank_model="",
                 rewrite_fallback=False,
             )
         )

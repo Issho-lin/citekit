@@ -8,17 +8,20 @@ import { FgSlider } from "./FgSlider";
 import { IconSearch } from "./icons";
 import { MySelect } from "./MySelect";
 import { QuestionTip } from "./QuestionTip";
+import { useStore } from "../mock/store";
 
 function SwitchField({
   title,
   tip,
   checked,
   onChange,
+  disabled,
 }: {
   title: string;
   tip: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="fg-slider">
@@ -26,7 +29,12 @@ function SwitchField({
         {title}
         <QuestionTip label={tip} maxW="360px" />
       </div>
-      <Switch size="md" isChecked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <Switch
+        size="md"
+        isChecked={checked}
+        isDisabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
     </div>
   );
 }
@@ -40,6 +48,8 @@ export function SearchParamsFields({
   onChange: (next: SearchConfig) => void;
   showFilterFirst?: boolean;
 }) {
+  const { aiModels } = useStore();
+  const hasRerank = aiModels.some((m) => m.isActive && m.type === "rerank");
   function patch(next: Partial<SearchConfig>) {
     onChange({ ...search, ...next });
   }
@@ -83,8 +93,13 @@ export function SearchParamsFields({
       />
       <SwitchField
         title="重排"
-        tip="先召回一批候选，再用重排模型精排。更准、更慢，且需要已配置重排模型。制度问答建议开，纯关键词查找可关。"
-        checked={search.usingRerank}
+        tip={
+          hasRerank
+            ? "先召回一批候选，再用重排模型精排。更准、更慢。制度问答建议开，纯关键词查找可关。"
+            : "当前没有可用的重排模型。通义、豆包、DeepSeek、混元、Kimi、MiniMax 的 OpenAI 兼容接口通常不提供，检索仍可用。"
+        }
+        checked={hasRerank && search.usingRerank}
+        disabled={!hasRerank}
         onChange={(usingRerank) => patch({ usingRerank })}
       />
       {showFilterFirst && (

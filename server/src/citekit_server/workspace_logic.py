@@ -16,7 +16,7 @@ def ensure_workspace(db: Session) -> WorkspaceRow:
 
 def _matches(row: AiModelRow, kind: str) -> bool:
     if kind == "vlm":
-        return row.type == "vlm" or (row.type == "llm" and bool(row.vision))
+        return row.type == "llm" and bool(row.vision)
     return row.type == kind
 
 

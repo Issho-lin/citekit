@@ -132,7 +132,7 @@ def create_model(body: AiModelIn, db: Session = Depends(get_db)) -> AiModelOut:
     return model_to_out(row)
 
 
-@router.patch("/models/{model_id}", response_model=AiModelOut)
+@router.patch("/models/{model_id:path}", response_model=AiModelOut)
 def patch_model(model_id: str, body: AiModelPatch, db: Session = Depends(get_db)) -> AiModelOut:
     row = db.get(AiModelRow, model_id)
     if not row:
@@ -159,6 +159,7 @@ def patch_model(model_id: str, body: AiModelPatch, db: Session = Depends(get_db)
         "provider": "provider",
         "isActive": "is_active",
         "vision": "vision",
+        "multimodal": "multimodal",
         "toolChoice": "tool_choice",
         "maxContext": "max_context",
         "maxResponse": "max_response",
@@ -183,7 +184,7 @@ def patch_model(model_id: str, body: AiModelPatch, db: Session = Depends(get_db)
     return model_to_out(row)
 
 
-@router.delete("/models/{model_id}")
+@router.delete("/models/{model_id:path}")
 def delete_model(model_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
     row = db.get(AiModelRow, model_id)
     if not row:
@@ -194,7 +195,7 @@ def delete_model(model_id: str, db: Session = Depends(get_db)) -> dict[str, bool
     return {"ok": True}
 
 
-@router.post("/models/{model_id}/test", response_model=TestOut)
+@router.post("/models/{model_id:path}/test", response_model=TestOut)
 async def test_one_model(model_id: str, db: Session = Depends(get_db)) -> TestOut:
     row = db.get(AiModelRow, model_id)
     if not row:

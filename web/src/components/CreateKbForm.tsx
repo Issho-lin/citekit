@@ -145,7 +145,7 @@ export function CreateKbForm({
         <Flex w="100%" alignItems="center" justify="space-between">
           <HStack spacing={1} flex="0 0 110px" fontSize="sm" color="myGray.900" fontWeight={500}>
             <Box>图片理解模型</Box>
-            <QuestionTip label="自动标注文档里的图片并生成文本描述，辅助文本检索" />
+            <QuestionTip label="给文档插图写描述。列表是已启用且打开了视觉能力的语言模型。" />
           </HStack>
           <Box w="300px">
             <MySelect

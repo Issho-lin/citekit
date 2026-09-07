@@ -164,7 +164,9 @@ export interface ChunkIndex {
   text: string;
 }
 
-export type ModelType = "llm" | "embedding" | "vlm" | "rerank";
+export type ModelType = "llm" | "embedding" | "rerank";
+/** 工作空间/知识库槽位。图片理解不是独立类型，来自带视觉能力的语言模型。 */
+export type ModelSlot = ModelType | "vlm";
 
 export interface AiModel {
   model: string;
@@ -174,6 +176,7 @@ export interface AiModel {
   isActive: boolean;
   isCustom: boolean;
   vision?: boolean;
+  multimodal?: boolean;
   toolChoice?: boolean;
   maxContext?: number;
   maxResponse?: number;
@@ -195,6 +198,8 @@ export interface ModelProvider {
   isVisible: boolean;
   defaultBaseUrl?: string;
   hasApiKey?: boolean;
+  rerankUrlTip?: string;
+  embeddingUrlTip?: string;
 }
 
 export interface ModelTestResult {

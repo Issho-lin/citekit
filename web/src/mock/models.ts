@@ -1,4 +1,4 @@
-import type { AiModel, ModelType } from "../types";
+import type { AiModel, ModelSlot, ModelType } from "../types";
 
 export const MODEL_TYPE_META: {
   id: ModelType;
@@ -8,7 +8,6 @@ export const MODEL_TYPE_META: {
 }[] = [
   { id: "llm", label: "语言模型", tag: "tag-blue", desc: "文本理解、问答增强、QA 抽取" },
   { id: "embedding", label: "索引模型", tag: "tag-yellow", desc: "把文本块转成向量，用于语义检索" },
-  { id: "vlm", label: "图片理解", tag: "tag-purple", desc: "识别文档里的图片并生成描述" },
   { id: "rerank", label: "重排模型", tag: "tag-red", desc: "对检索结果再排序" },
 ];
 
@@ -16,22 +15,61 @@ export function typeMeta(type: ModelType) {
   return MODEL_TYPE_META.find((t) => t.id === type) ?? MODEL_TYPE_META[0];
 }
 
-export function matchesType(model: AiModel, type: ModelType) {
-  if (type === "vlm") return model.type === "vlm" || (model.type === "llm" && !!model.vision);
-  return model.type === type;
+export function guessChatVision(id: string) {
+  const n = id.toLowerCase();
+  if (n.includes("embed") || n.includes("rerank")) return false;
+  return ["-vl-", "_vl_", "-vlm", "vlm-", "vision", "gpt-4o", "gpt-4.1"].some((x) => n.includes(x));
 }
 
-export function modelSelectList(models: AiModel[], type: ModelType, current?: string) {
-  const active = models.filter((m) => m.isActive && matchesType(m, type));
+export function guessMultimodalEmbedding(id: string) {
+  const n = id.toLowerCase();
+  return n.includes("vl-embedding") || n.includes("multimodal-embed") || n.includes("vision-embed");
+}
+
+export function guessRerankVision(id: string) {
+  const n = id.toLowerCase();
+  return n.includes("vl-rerank") || n.includes("vision-rerank");
+}
+
+export function guessFromModelId(id: string, type: ModelType): Partial<AiModel> {
+  const n = id.toLowerCase();
+  if (n.includes("rerank")) {
+    return { type: "rerank", vision: guessRerankVision(id), multimodal: false };
+  }
+  if (n.includes("embed")) {
+    return { type: "embedding", vision: false, multimodal: guessMultimodalEmbedding(id) };
+  }
+  if (type === "llm") return { vision: guessChatVision(id) };
+  if (type === "embedding") return { multimodal: guessMultimodalEmbedding(id) };
+  if (type === "rerank") return { vision: guessRerankVision(id) };
+  return {};
+}
+
+export function matchesType(model: AiModel, slot: ModelSlot) {
+  if (slot === "vlm") return model.type === "llm" && !!model.vision;
+  return model.type === slot;
+}
+
+export function modelSelectList(
+  models: AiModel[],
+  slot: ModelSlot,
+  current?: string,
+  noneLabel?: string,
+) {
+  const active = models.filter((m) => m.isActive && matchesType(m, slot));
   if (current && !active.some((m) => m.model === current)) {
     const extra = models.find((m) => m.model === current);
     if (extra) active.unshift(extra);
   }
-  return active.map((m) => ({
+  const options = active.map((m) => ({
     label: m.model,
     value: m.model,
     description: m.provider,
   }));
+  if (noneLabel != null) {
+    return [{ label: noneLabel, value: "" }, ...options];
+  }
+  return options;
 }
 
 export function blankModel(type: ModelType): AiModel {
@@ -48,12 +86,9 @@ export function blankModel(type: ModelType): AiModel {
     return { ...base, maxContext: 16000, maxResponse: 4000, vision: false, toolChoice: true };
   }
   if (type === "embedding") {
-    return { ...base, maxToken: 8192, defaultToken: 512, batchSize: 100, normalization: true };
+    return { ...base, maxToken: 8192, defaultToken: 512, batchSize: 100, normalization: true, multimodal: false };
   }
-  if (type === "vlm") {
-    return { ...base, maxContext: 16000, vision: true };
-  }
-  return { ...base, maxToken: 8192 };
+  return { ...base, maxToken: 8192, vision: false };
 }
 
 export const seedAiModels: AiModel[] = [
@@ -128,7 +163,7 @@ export const seedAiModels: AiModel[] = [
   {
     model: "qwen-vl-plus",
     name: "通义千问 VL Plus",
-    type: "vlm",
+    type: "llm",
     provider: "Qwen",
     isActive: true,
     isCustom: false,

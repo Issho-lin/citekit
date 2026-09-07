@@ -190,7 +190,14 @@ export function ModelConfigTab() {
                     </Flex>
                   </td>
                   <td>
-                    <ModelTypeTag type={m.type} />
+                    <HStack spacing={1}>
+                      <ModelTypeTag type={m.type} />
+                      {m.type === "llm" && m.vision ? <span className="tag tag-purple">视觉</span> : null}
+                      {m.type === "embedding" && m.multimodal ? (
+                        <span className="tag tag-purple">多模态</span>
+                      ) : null}
+                      {m.type === "rerank" && m.vision ? <span className="tag tag-purple">多模态</span> : null}
+                    </HStack>
                   </td>
                   <td>
                     <Switch

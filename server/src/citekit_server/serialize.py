@@ -1,17 +1,21 @@
+from citekit_server.provider_protocol import protocol_of
 from citekit_server.secretbox import mask_secret
 from citekit_server.db import AiModelRow, ProviderRow, WorkspaceRow
 from citekit_server.schemas import AiModelIn, AiModelOut, ProviderOut, WorkspaceOut
 
 
 def model_to_out(row: AiModelRow) -> AiModelOut:
+    kind = "llm" if row.type == "vlm" else row.type
+    vision = True if row.type == "vlm" else row.vision
     return AiModelOut(
         model=row.id,
         name=row.name,
-        type=row.type,  # type: ignore[arg-type]
+        type=kind,  # type: ignore[arg-type]
         provider=row.provider,
         isActive=row.is_active,
         isCustom=row.is_custom,
-        vision=row.vision,
+        vision=vision,
+        multimodal=row.multimodal,
         toolChoice=row.tool_choice,
         maxContext=row.max_context,
         maxResponse=row.max_response,
@@ -33,6 +37,7 @@ def apply_model_in(row: AiModelRow, data: AiModelIn) -> None:
     row.is_active = data.isActive
     row.is_custom = data.isCustom
     row.vision = data.vision
+    row.multimodal = data.multimodal
     row.tool_choice = data.toolChoice
     row.max_context = data.maxContext
     row.max_response = data.maxResponse
@@ -45,6 +50,7 @@ def apply_model_in(row: AiModelRow, data: AiModelIn) -> None:
 
 
 def provider_to_out(row: ProviderRow) -> ProviderOut:
+    proto = protocol_of(row.id)
     return ProviderOut(
         id=row.id,
         name=row.name,
@@ -53,6 +59,8 @@ def provider_to_out(row: ProviderRow) -> ProviderOut:
         isVisible=row.is_visible,
         defaultBaseUrl=row.default_base_url or "",
         hasApiKey=bool((row.api_key or "").strip()),
+        rerankUrlTip=proto.rerank_url_tip,
+        embeddingUrlTip=proto.embedding_url_tip,
     )
 
 

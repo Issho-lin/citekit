@@ -91,7 +91,8 @@ export function KbInfoPanel({ kb }: { kb: KnowledgeBase }) {
           <MySelect
             value={kb.rerankModel}
             onChange={(rerankModel) => updateKnowledgeBase(kb.id, { rerankModel })}
-            list={modelSelectList(aiModels, "rerank", kb.rerankModel)}
+            list={modelSelectList(aiModels, "rerank", kb.rerankModel, "不使用")}
+            placeholder="不使用"
           />
         </label>
         <Button as={Link} to={`/tools/new?kb=${kb.id}`} w="100%">

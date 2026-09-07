@@ -22,6 +22,7 @@ class AiModelRow(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_custom: Mapped[bool] = mapped_column(Boolean, default=True)
     vision: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    multimodal: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     tool_choice: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     max_context: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_response: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -69,6 +70,23 @@ def ensure_schema() -> None:
             cols = {item["name"] for item in inspector.get_columns("ai_models")}
             if "mapped_model" not in cols:
                 conn.execute(text("ALTER TABLE ai_models ADD COLUMN mapped_model VARCHAR(200) NULL"))
+            if "multimodal" not in cols:
+                conn.execute(text("ALTER TABLE ai_models ADD COLUMN multimodal BOOLEAN NULL"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE ai_models
+                        SET multimodal = 1
+                        WHERE type = 'embedding'
+                          AND (
+                            LOWER(id) LIKE '%vl-embedding%'
+                            OR LOWER(IFNULL(mapped_model, '')) LIKE '%vl-embedding%'
+                            OR LOWER(id) LIKE '%multimodal-embed%'
+                          )
+                        """
+                    )
+                )
+            conn.execute(text("UPDATE ai_models SET type = 'llm', vision = 1 WHERE type = 'vlm'"))
         if "providers" in names:
             cols = {item["name"] for item in inspector.get_columns("providers")}
             if "is_visible" not in cols:

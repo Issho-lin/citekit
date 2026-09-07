@@ -34,7 +34,13 @@ export function DefaultModelsModal({ onClose }: { onClose: () => void }) {
     rerankModel,
   });
 
-  const fields = [
+  const fields: {
+    key: "llmModel" | "vectorModel" | "vlmModel" | "rerankModel";
+    label: string;
+    tip: string;
+    type: "llm" | "embedding" | "vlm" | "rerank";
+    none?: string;
+  }[] = [
     {
       key: "llmModel" as const,
       label: "语言模型",
@@ -50,14 +56,15 @@ export function DefaultModelsModal({ onClose }: { onClose: () => void }) {
     {
       key: "vlmModel" as const,
       label: "图片理解模型",
-      tip: "解析文档插图。列表来自带视觉能力的语言模型，以及图片理解模型。",
+      tip: "解析文档插图。列表是已启用且打开了视觉能力的语言模型。",
       type: "vlm" as const,
     },
     {
       key: "rerankModel" as const,
       label: "重排模型",
-      tip: "搜索测试和检索工具打开重排时使用。",
+      tip: "可选。没有就不做精排，语义检索仍可用。通义、豆包、DeepSeek、混元、Kimi、MiniMax 的 OpenAI 兼容接口通常不提供重排。",
       type: "rerank" as const,
+      none: "不使用",
     },
   ];
 
@@ -77,8 +84,8 @@ export function DefaultModelsModal({ onClose }: { onClose: () => void }) {
                 <MySelect
                   value={draft[f.key]}
                   onChange={(v) => setDraft((s) => ({ ...s, [f.key]: v }))}
-                  list={modelSelectList(aiModels, f.type, draft[f.key])}
-                  placeholder="请先启用该类模型"
+                  list={modelSelectList(aiModels, f.type, draft[f.key], f.none)}
+                  placeholder={f.none ?? "请先启用该类模型"}
                 />
               </Box>
             ))}

@@ -20,7 +20,7 @@ export function SettingsPage() {
   } = useStore();
   const [defaultOpen, setDefaultOpen] = useState(false);
 
-  const nameOf = (id: string) => id;
+  const nameOf = (id: string) => id || "未设置";
 
   return (
     <div className="page">

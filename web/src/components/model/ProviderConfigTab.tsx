@@ -4,7 +4,7 @@ import { IconSearch } from "../icons";
 import { SECRET_MASK, isPlainSecret } from "../../api";
 import { useStore } from "../../mock/store";
 import { useToast } from "../Toast";
-import { ProviderAvatar, pickerProviders } from "./shared";
+import { ProviderAvatar, configProviders } from "./shared";
 
 const fieldH = "32px";
 
@@ -17,7 +17,7 @@ export function ProviderConfigTab() {
 
   const list = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return pickerProviders(providers).filter((p) => {
+    return configProviders(providers).filter((p) => {
       if (!q) return true;
       return p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
     });

@@ -1,9 +1,15 @@
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
-ModelType = Literal["llm", "embedding", "vlm", "rerank"]
+ModelType = Literal["llm", "embedding", "rerank"]
+
+
+def _fold_vlm(data: Any) -> Any:
+    if isinstance(data, dict) and data.get("type") == "vlm":
+        return {**data, "type": "llm", "vision": True}
+    return data
 
 
 class SecretEnvelope(BaseModel):
@@ -22,6 +28,7 @@ class AiModelOut(BaseModel):
     isActive: bool
     isCustom: bool
     vision: bool | None = None
+    multimodal: bool | None = None
     toolChoice: bool | None = None
     maxContext: int | None = None
     maxResponse: int | None = None
@@ -43,6 +50,7 @@ class AiModelIn(BaseModel):
     isActive: bool = True
     isCustom: bool = True
     vision: bool | None = None
+    multimodal: bool | None = None
     toolChoice: bool | None = None
     maxContext: int | None = None
     maxResponse: int | None = None
@@ -53,6 +61,11 @@ class AiModelIn(BaseModel):
     requestUrl: str | None = None
     requestAuthEnc: SecretEnvelope | None = None
     mappedModel: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def fold_vlm(cls, data: Any) -> Any:
+        return _fold_vlm(data)
 
 
 class AiModelPatch(BaseModel):
@@ -62,6 +75,7 @@ class AiModelPatch(BaseModel):
     provider: str | None = None
     isActive: bool | None = None
     vision: bool | None = None
+    multimodal: bool | None = None
     toolChoice: bool | None = None
     maxContext: int | None = None
     maxResponse: int | None = None
@@ -72,6 +86,11 @@ class AiModelPatch(BaseModel):
     requestUrl: str | None = None
     requestAuthEnc: SecretEnvelope | None = None
     mappedModel: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def fold_vlm(cls, data: Any) -> Any:
+        return _fold_vlm(data)
 
 
 class WorkspaceOut(BaseModel):
@@ -98,6 +117,8 @@ class ProviderOut(BaseModel):
     isVisible: bool
     defaultBaseUrl: str = ""
     hasApiKey: bool = False
+    rerankUrlTip: str = ""
+    embeddingUrlTip: str = ""
 
 
 class TestOut(BaseModel):
