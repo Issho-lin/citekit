@@ -17,3 +17,4 @@ FastGPT/
 .cursor/
 *.local
 .vite
+server/data/

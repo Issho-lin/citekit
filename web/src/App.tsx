@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./layout/AppShell";
+import { CallLogsPage } from "./pages/CallLogsPage";
 import { EvalPage } from "./pages/EvalPage";
 import { KbDataPage } from "./pages/KbDataPage";
 import { KbDetailPage } from "./pages/KbDetailPage";
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="/mcp" element={<McpPage />} />
         <Route path="/mcp/new" element={<NewMcpPage />} />
         <Route path="/mcp/:endpointId" element={<McpDetailPage />} />
+        <Route path="/calls" element={<CallLogsPage />} />
         <Route path="/eval" element={<EvalPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

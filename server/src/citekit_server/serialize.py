@@ -1,7 +1,18 @@
 from citekit_server.provider_protocol import protocol_of
 from citekit_server.secretbox import mask_secret
-from citekit_server.db import AiModelRow, ProviderRow, WorkspaceRow
-from citekit_server.schemas import AiModelIn, AiModelOut, ProviderOut, WorkspaceOut
+from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, ModelCallRow, ProviderRow, SourceRow, WorkspaceRow
+from citekit_server.schemas import (
+    AiModelIn,
+    AiModelOut,
+    ChunkOut,
+    KnowledgeBaseOut,
+    ModelCallOut,
+    ModelCallSummary,
+    ProcessConfigIn,
+    ProviderOut,
+    SourceOut,
+    WorkspaceOut,
+)
 
 
 def model_to_out(row: AiModelRow) -> AiModelOut:
@@ -72,3 +83,87 @@ def workspace_to_out(row: WorkspaceRow) -> WorkspaceOut:
         rerankModel=row.rerank_model,
         rewriteFallback=row.rewrite_fallback,
     )
+
+
+def kb_to_out(row: KnowledgeBaseRow, doc_count: int = 0) -> KnowledgeBaseOut:
+    return KnowledgeBaseOut(
+        id=row.id,
+        name=row.name,
+        domain=row.domain or "",
+        description=row.description or "",
+        docCount=doc_count,
+        kind=row.kind,
+        parentId=row.parent_id,
+        websiteUrl=row.website_url,
+        websiteSelector=row.website_selector,
+        apiDatasetServer=row.api_dataset_server,
+        vectorModel=row.vector_model,
+        llmModel=row.llm_model,
+        vlmModel=row.vlm_model,
+        rerankModel=row.rerank_model,
+        searchMode=row.search_mode,
+        similarity=row.similarity,
+        limit=row.limit,
+        usingRerank=row.using_rerank,
+    )
+
+
+def source_to_out(row: SourceRow) -> SourceOut:
+    process = ProcessConfigIn.model_validate(row.process or {})
+    data = process.model_dump()
+    return SourceOut(
+        id=row.id,
+        kbId=row.kb_id,
+        parentId=row.parent_id,
+        type=row.type,
+        title=row.title,
+        locator=row.locator or "",
+        acl=row.acl,
+        status=row.status,
+        errorMessage=row.error_message,
+        updatedAt=row.updated_at,
+        chunkCount=row.chunk_count,
+        **data,
+    )
+
+
+def chunk_to_out(row: ChunkRow) -> ChunkOut:
+    return ChunkOut(
+        id=row.id,
+        sliceId="",
+        sourceId=row.source_id,
+        title=row.title,
+        text=row.text,
+        locator=row.locator,
+    )
+
+
+def call_to_summary(row: ModelCallRow) -> ModelCallSummary:
+    return ModelCallSummary(
+        id=row.id,
+        createdAt=row.created_at,
+        modelId=row.model_id,
+        modelName=row.model_name,
+        mappedModel=row.mapped_model,
+        type=row.model_type,
+        provider=row.provider,
+        purpose=row.purpose,
+        kind=row.kind,
+        method=row.method,
+        url=row.url,
+        httpStatus=row.http_status,
+        ok=row.ok,
+        latencyMs=row.latency_ms,
+        error=row.error,
+        kbId=row.kb_id,
+        sourceId=row.source_id,
+        promptTokens=row.prompt_tokens,
+        completionTokens=row.completion_tokens,
+        totalTokens=row.total_tokens,
+        summary=row.summary or "",
+    )
+
+
+def call_to_out(row: ModelCallRow) -> ModelCallOut:
+    data = call_to_summary(row).model_dump()
+    return ModelCallOut(**data, request=row.request_body, response=row.response_body)

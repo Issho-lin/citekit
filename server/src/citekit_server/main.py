@@ -5,8 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from citekit_server import __version__
 from citekit_server.api import router
+from citekit_server.calls_api import router as calls_router
 from citekit_server.config import settings
 from citekit_server.db import Base, SessionLocal, engine, ensure_schema
+from citekit_server.kb_api import router as kb_router
 from citekit_server.seed import seed_if_empty
 
 
@@ -14,6 +16,8 @@ from citekit_server.seed import seed_if_empty
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_schema()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    (settings.data_dir / "uploads").mkdir(parents=True, exist_ok=True)
     db = SessionLocal()
     try:
         seed_if_empty(db)
@@ -31,6 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(kb_router)
+app.include_router(calls_router)
 
 
 @app.get("/")

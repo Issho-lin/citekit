@@ -23,6 +23,7 @@ from citekit_server.serialize import (
     provider_to_out,
     workspace_to_out,
 )
+from citekit_server.call_log import call_scope
 from citekit_server.upstream import list_remote_models, test_model
 from citekit_server.secretbox import decrypt_envelope, public_pem
 from citekit_server.workspace_logic import ensure_workspace, pick_fallback, retarget_model_id
@@ -101,7 +102,8 @@ async def discover_models(body: DiscoverIn, db: Session = Depends(get_db)) -> Di
     if not key:
         raise HTTPException(400, "请填写 API 密钥，或先在供应商配置里保存密钥")
     try:
-        ids = await list_remote_models(base, key)
+        with call_scope(purpose="discover", provider=provider_id):
+            ids = await list_remote_models(base, key)
     except Exception as exc:
         raise HTTPException(502, str(exc) or "无法获取上游模型列表") from exc
     return DiscoverOut(ids=ids)
@@ -200,7 +202,8 @@ async def test_one_model(model_id: str, db: Session = Depends(get_db)) -> TestOu
     row = db.get(AiModelRow, model_id)
     if not row:
         return TestOut(ok=False, ms=0, message="模型不存在")
-    return await test_model(row, resolve_model_auth(db, row))
+    with call_scope(purpose="test"):
+        return await test_model(row, resolve_model_auth(db, row))
 
 
 @router.get("/workspace", response_model=WorkspaceOut)

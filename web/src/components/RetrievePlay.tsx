@@ -125,6 +125,7 @@ export function RetrievePlay({
   chunks,
   defaultQuery = "",
   placeholder = "输入问题，测试检索",
+  onRetrieve,
 }: {
   sliceId?: string;
   sliceIds?: string[];
@@ -136,31 +137,48 @@ export function RetrievePlay({
   chunks: Chunk[];
   defaultQuery?: string;
   placeholder?: string;
+  onRetrieve?: (input: {
+    query: string;
+    sourceIds?: string[];
+    search?: SearchConfig;
+  }) => Promise<{ hits: Hit[]; message?: string }>;
 }) {
   const [query, setQuery] = useState(defaultQuery);
   const [warehouse, setWarehouse] = useState("华北");
   const [hits, setHits] = useState<Hit[]>([]);
   const [message, setMessage] = useState<string | undefined>();
   const [ran, setRan] = useState(false);
+  const [loading, setLoading] = useState(false);
   const filterFirst = search?.filterFirst || profile === "filter_first";
 
-  function onSearch(e: FormEvent) {
+  async function onSearch(e: FormEvent) {
     e.preventDefault();
-    const result = retrieve(
-      {
-        sliceId,
-        sliceIds,
-        sourceIds,
-        query,
-        profile: filterFirst ? "filter_first" : profile,
-        search,
-        warehouse: filterFirst ? warehouse : undefined,
-      },
-      chunks,
-    );
-    setHits(result.hits);
-    setMessage(result.message);
-    setRan(true);
+    setLoading(true);
+    try {
+      const result = onRetrieve
+        ? await onRetrieve({ query, sourceIds, search })
+        : retrieve(
+            {
+              sliceId,
+              sliceIds,
+              sourceIds,
+              query,
+              profile: filterFirst ? "filter_first" : profile,
+              search,
+              warehouse: filterFirst ? warehouse : undefined,
+            },
+            chunks,
+          );
+      setHits(result.hits);
+      setMessage(result.message);
+      setRan(true);
+    } catch (err) {
+      setHits([]);
+      setMessage(err instanceof Error ? err.message : "检索失败");
+      setRan(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -179,7 +197,9 @@ export function RetrievePlay({
             placeholder="仓库，如华北"
           />
         )}
-        <Button type="submit">检索测试</Button>
+        <Button type="submit" isLoading={loading}>
+          检索测试
+        </Button>
       </form>
       {ran && (
         <div className="hit-list">

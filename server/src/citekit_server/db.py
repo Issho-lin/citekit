@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Integer, String, Text, create_engine, inspect, text
+from typing import Any
+
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from citekit_server.config import settings
@@ -56,6 +58,98 @@ class WorkspaceRow(Base):
     vlm_model: Mapped[str] = mapped_column(String(200), default="")
     rerank_model: Mapped[str] = mapped_column(String(200), default="")
     rewrite_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class KnowledgeBaseRow(Base):
+    __tablename__ = "knowledge_bases"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    domain: Mapped[str] = mapped_column(String(80), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(32), default="dataset")
+    parent_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    vector_model: Mapped[str] = mapped_column(String(200), default="")
+    llm_model: Mapped[str] = mapped_column(String(200), default="")
+    vlm_model: Mapped[str] = mapped_column(String(200), default="")
+    rerank_model: Mapped[str] = mapped_column(String(200), default="")
+    search_mode: Mapped[str] = mapped_column(String(32), default="mix")
+    similarity: Mapped[float] = mapped_column(Float, default=0.2)
+    limit: Mapped[int] = mapped_column(Integer, default=20)
+    using_rerank: Mapped[bool] = mapped_column(Boolean, default=False)
+    website_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    website_selector: Mapped[str | None] = mapped_column(Text, nullable=True)
+    api_dataset_server: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class UploadedFileRow(Base):
+    __tablename__ = "uploaded_files"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    path: Mapped[str] = mapped_column(Text)
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    mime: Mapped[str] = mapped_column(String(120), default="")
+
+
+class SourceRow(Base):
+    __tablename__ = "kb_sources"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    type: Mapped[str] = mapped_column(String(32), default="upload")
+    title: Mapped[str] = mapped_column(String(255))
+    locator: Mapped[str] = mapped_column(Text, default="")
+    acl: Mapped[str] = mapped_column(String(32), default="internal")
+    status: Mapped[str] = mapped_column(String(32), default="syncing")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    process: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    file_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[str] = mapped_column(String(32), default="")
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ChunkRow(Base):
+    __tablename__ = "kb_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    source_id: Mapped[str] = mapped_column(String(32), ForeignKey("kb_sources.id"), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    text: Mapped[str] = mapped_column(Text, default="")
+    locator: Mapped[str] = mapped_column(String(255), default="")
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ModelCallRow(Base):
+    __tablename__ = "model_calls"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String(40), index=True)
+    model_id: Mapped[str] = mapped_column(String(200), default="", index=True)
+    model_name: Mapped[str] = mapped_column(String(200), default="")
+    mapped_model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    model_type: Mapped[str] = mapped_column(String(32), default="", index=True)
+    provider: Mapped[str] = mapped_column(String(64), default="")
+    purpose: Mapped[str] = mapped_column(String(32), default="", index=True)
+    kind: Mapped[str] = mapped_column(String(32), default="")
+    method: Mapped[str] = mapped_column(String(8), default="POST")
+    url: Mapped[str] = mapped_column(Text, default="")
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kb_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    source_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    summary: Mapped[str] = mapped_column(String(255), default="")
+    request_body: Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    response_body: Mapped[Any | None] = mapped_column(JSON, nullable=True)
 
 
 def ensure_schema() -> None:

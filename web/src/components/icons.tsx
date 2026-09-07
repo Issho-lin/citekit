@@ -193,6 +193,15 @@ export function IconCheck({ size = 20 }: { size?: number }) {
   );
 }
 
+export function IconTrace({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M4 19V5M4 19h16" />
+      <path d="M7 14l3.2-4 2.6 2.2L17 7" />
+    </svg>
+  );
+}
+
 export function IconGear({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">

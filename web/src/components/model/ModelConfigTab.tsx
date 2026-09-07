@@ -185,19 +185,17 @@ export function ModelConfigTab() {
                         <Box className="model-caps">
                           <span>{providerOf(providers, m.provider).name}</span>
                           {m.mappedModel ? <span>映射 {m.mappedModel}</span> : null}
+                          {m.type === "llm" && m.vision ? <span className="cap cap-purple">视觉</span> : null}
+                          {m.type === "embedding" && m.multimodal ? (
+                            <span className="cap cap-cyan">多模态</span>
+                          ) : null}
+                          {m.type === "rerank" && m.vision ? <span className="cap cap-cyan">多模态</span> : null}
                         </Box>
                       </Box>
                     </Flex>
                   </td>
                   <td>
-                    <HStack spacing={1}>
-                      <ModelTypeTag type={m.type} />
-                      {m.type === "llm" && m.vision ? <span className="tag tag-purple">视觉</span> : null}
-                      {m.type === "embedding" && m.multimodal ? (
-                        <span className="tag tag-purple">多模态</span>
-                      ) : null}
-                      {m.type === "rerank" && m.vision ? <span className="tag tag-purple">多模态</span> : null}
-                    </HStack>
+                    <ModelTypeTag type={m.type} />
                   </td>
                   <td>
                     <Switch

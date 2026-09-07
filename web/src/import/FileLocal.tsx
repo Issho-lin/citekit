@@ -1,5 +1,6 @@
 import { Box, Button } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../api";
 import { useDatasetImport } from "./Context";
 import { DataProcess } from "./DataProcess";
 import { FileSelector, type SelectFileItemType } from "./FileSelector";
@@ -22,7 +23,7 @@ export function FileLocal() {
 }
 
 function SelectFile() {
-  const { goToNext, sources, setSources } = useDatasetImport();
+  const { goToNext, sources, setSources, kbId } = useDatasetImport();
   const [selectFiles, setSelectFiles] = useState<ImportSourceItemType[]>(
     sources.map((source) => ({ isUploading: false, ...source })),
   );
@@ -61,11 +62,11 @@ function SelectFile() {
     ]);
 
     await Promise.all(
-      files.map(async ({ fileId }) => {
+      files.map(async ({ file, fileId }) => {
         const controller = new AbortController();
         uploadControllers.current.set(fileId, controller);
         try {
-          await mockUpload(controller.signal, (percent) => {
+          const uploaded = await api.uploadKbFile(kbId, file, controller.signal, (percent) => {
             setSelectFiles((state) =>
               state.map((item) =>
                 item.id === fileId
@@ -78,15 +79,21 @@ function SelectFile() {
           setSelectFiles((state) =>
             state.map((item) =>
               item.id === fileId
-                ? { ...item, dbFileId: `local/${fileId}`, isUploading: false, uploadedFileRate: 100 }
+                ? { ...item, dbFileId: uploaded.id, isUploading: false, uploadedFileRate: 100 }
                 : item,
             ),
           );
-        } catch {
+        } catch (err) {
           if (controller.signal.aborted) return;
           setSelectFiles((state) =>
             state.map((item) =>
-              item.id === fileId ? { ...item, isUploading: false, errorMsg: "上传异常" } : item,
+              item.id === fileId
+                ? {
+                    ...item,
+                    isUploading: false,
+                    errorMsg: err instanceof Error ? err.message : "上传异常",
+                  }
+                : item,
             ),
           );
         } finally {
@@ -113,23 +120,4 @@ function SelectFile() {
       </Box>
     </Box>
   );
-}
-
-function mockUpload(signal: AbortSignal, onProgress: (p: number) => void) {
-  return new Promise<void>((resolve, reject) => {
-    let p = 0;
-    const t = window.setInterval(() => {
-      if (signal.aborted) {
-        window.clearInterval(t);
-        reject(new Error("aborted"));
-        return;
-      }
-      p = Math.min(100, p + 20);
-      onProgress(p);
-      if (p >= 100) {
-        window.clearInterval(t);
-        resolve();
-      }
-    }, 80);
-  });
 }

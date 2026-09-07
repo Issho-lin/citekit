@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Box,
@@ -72,6 +72,7 @@ export function KbDataPage() {
   const training = useDisclosure();
   const {
     knowledgeBases,
+    kbsReady,
     sources,
     chunks,
     updateSource,
@@ -79,6 +80,7 @@ export function KbDataPage() {
     updateChunk,
     insertChunk,
     removeChunk,
+    loadSourceChunks,
   } = useStore();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   const source = sources.find((s) => s.id === sourceId);
@@ -87,6 +89,11 @@ export function KbDataPage() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draftProcess, setDraftProcess] = useState<ProcessConfig | null>(null);
+
+  useEffect(() => {
+    if (!sourceId) return;
+    void loadSourceChunks(sourceId).catch(() => undefined);
+  }, [sourceId, loadSourceChunks, source?.status, source?.chunkCount]);
 
   const process = fillProcess(source);
   const shown = useMemo(() => {
@@ -98,6 +105,14 @@ export function KbDataPage() {
   }, [rows, search]);
 
   const indexAmount = rows.length * (process.autoIndexes ? 2 : 1);
+
+  if (!kbsReady) {
+    return (
+      <div className="page">
+        <p className="page-desc">加载中…</p>
+      </div>
+    );
+  }
 
   if (!kb || !source) {
     return (
@@ -144,6 +159,9 @@ export function KbDataPage() {
                 {source.title}
               </Box>
             </Flex>
+            <Button variant="whitePrimary" onClick={() => nav(`/kb/${kb.id}?tab=test`)}>
+              试搜
+            </Button>
             <Button variant="whitePrimary" onClick={() => exportChunks(source.title, rows)}>
               导出分块
             </Button>
@@ -164,6 +182,12 @@ export function KbDataPage() {
           <Box px={6}>
             <div className="data-divider" />
           </Box>
+
+          {source.status === "error" && source.errorMessage ? (
+            <Box mx={6} mb={3} px={3} py={2} fontSize="sm" color="red.600" bg="red.50" borderRadius="md">
+              训练失败：{source.errorMessage}
+            </Box>
+          ) : null}
 
           <Flex align="center" px={6} pb={4} gap={3}>
             <Flex align="center" color="myGray.500" minW={0}>
@@ -210,16 +234,22 @@ export function KbDataPage() {
                     role="button"
                     tabIndex={0}
                   >
-                    <div className="data-chunk-tag">
+                    <div className="data-chunk-head">
                       <span className="data-chunk-index">#{index + 1}</span>
-                      <span className="data-chunk-id">ID:{c.id}</span>
+                      <span
+                        className={
+                          (c.text + (c.a || "")).length > process.chunkSize
+                            ? "data-chunk-chars data-chunk-chars-warn"
+                            : "data-chunk-chars"
+                        }
+                      >
+                        <IconTextT />
+                        {(c.text + (c.a || "")).length} 字
+                      </span>
                     </div>
                     <p>{c.text}</p>
                     <div className="data-chunk-foot">
-                      <span className="data-chunk-len">
-                        <IconTextT />
-                        {(c.text + (c.a || "")).length}
-                      </span>
+                      <span className="data-chunk-id">ID:{c.id}</span>
                       <IconButton
                         aria-label="删除"
                         size="xsSquare"
@@ -312,8 +342,8 @@ export function KbDataPage() {
             </Button>
             <Button
               onClick={() => {
-                if (draftProcess) updateSource(source.id, draftProcess);
-                retrainSource(source.id);
+                if (draftProcess) void updateSource(source.id, draftProcess);
+                void retrainSource(source.id);
                 retrain.onClose();
                 toast("已按当前参数重新训练");
               }}

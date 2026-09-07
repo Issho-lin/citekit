@@ -20,6 +20,11 @@ def _matches(row: AiModelRow, kind: str) -> bool:
     return row.type == kind
 
 
+def pick_active(db: Session, kind: str) -> str:
+    rows = db.query(AiModelRow).filter(AiModelRow.is_active.is_(True)).all()
+    return next((item.id for item in rows if _matches(item, kind)), "")
+
+
 def pick_fallback(db: Session, leaving: AiModelRow) -> None:
     workspace = ensure_workspace(db)
     slots = (

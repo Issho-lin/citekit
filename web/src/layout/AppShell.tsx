@@ -21,13 +21,15 @@ import {
   IconDash,
   IconGear,
   IconLink,
+  IconTrace,
 } from "../components/icons";
 
 const links = [
   { to: "/", label: "工作台", icon: IconDash, exact: true },
   { to: "/kb", label: "知识库", icon: IconBook },
-  { to: "/tools", label: "检索工具", icon: IconBolt },
+  { to: "/tools", label: "工具", icon: IconBolt },
   { to: "/mcp", label: "MCP", icon: IconLink },
+  { to: "/calls", label: "调用", icon: IconTrace },
   { to: "/eval", label: "评测", icon: IconCheck },
   { to: "/settings", label: "设置", icon: IconGear },
 ];

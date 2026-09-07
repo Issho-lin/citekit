@@ -21,10 +21,18 @@ export function KbImportPage() {
   const { kbId } = useParams();
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const { knowledgeBases } = useStore();
+  const { knowledgeBases, kbsReady } = useStore();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   const importSource = kindFromQuery(params.get("source"));
   const parentId = params.get("parent") || undefined;
+
+  if (!kbsReady) {
+    return (
+      <div className="page">
+        <p>加载中…</p>
+      </div>
+    );
+  }
 
   if (!kb || !kbId) {
     return (

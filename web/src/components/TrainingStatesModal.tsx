@@ -163,7 +163,7 @@ export function TrainingStatesModal({
             {(
               [
                 { label: "训练状态", value: "states" as const },
-                { label: "异常 (0)", value: "errors" as const },
+                { label: `异常 (${source.errorMessage ? 1 : 0})`, value: "errors" as const },
               ] as const
             ).map((item) => {
               const on = tab === item.value;
@@ -197,6 +197,10 @@ export function TrainingStatesModal({
                 />
               ))}
             </Flex>
+          ) : source.errorMessage ? (
+            <Box color="red.600" fontSize="sm" py={4} whiteSpace="pre-wrap">
+              {source.errorMessage}
+            </Box>
           ) : (
             <Box color="myGray.500" fontSize="sm" py={10} textAlign="center">
               暂无异常

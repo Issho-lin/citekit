@@ -29,6 +29,7 @@ import { WebsiteConfigModal } from "../components/WebsiteConfigModal";
 import { FileSourceSelector } from "../import/FileSourceSelector";
 import type { ImportSourceKind } from "../import/types";
 import { SOURCE_LABEL, searchFromKb } from "../constants";
+import { api } from "../api";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
 import type { KbKind, SourceType } from "../types";
@@ -90,7 +91,7 @@ export function KbDetailPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "test" ? "test" : "collection";
   const colParent = params.get("parent") || undefined;
-  const { knowledgeBases, sources, chunks, removeSource, addSource } = useStore();
+  const { knowledgeBases, kbsReady, sources, chunks, removeSource, addSource } = useStore();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
@@ -113,6 +114,14 @@ export function KbDetailPage() {
     }
     return out;
   }, [parentFolder, sources]);
+
+  if (!kbsReady) {
+    return (
+      <div className="page">
+        <p className="page-desc">加载中…</p>
+      </div>
+    );
+  }
 
   if (!kb) {
     return (
@@ -272,7 +281,7 @@ export function KbDetailPage() {
                   </thead>
                   <tbody>
                     {shown.map((s) => {
-                      const n = chunks.filter((c) => c.sourceId === s.id).length;
+                      const n = s.chunkCount ?? chunks.filter((c) => c.sourceId === s.id).length;
                       return (
                         <tr
                           key={s.id}
@@ -304,8 +313,23 @@ export function KbDetailPage() {
                           </td>
                           <td className="mono">{s.updatedAt}</td>
                           <td>
-                            <span className={s.status === "syncing" ? "tag tag-warn" : "tag tag-ok"}>
-                              {s.status === "synced" ? "已就绪" : s.status === "syncing" ? "训练中" : s.status}
+                            <span
+                              className={
+                                s.status === "syncing"
+                                  ? "tag tag-warn"
+                                  : s.status === "error"
+                                    ? "tag tag-red"
+                                    : "tag tag-ok"
+                              }
+                              title={s.errorMessage || undefined}
+                            >
+                              {s.status === "synced"
+                                ? "已就绪"
+                                : s.status === "syncing"
+                                  ? "训练中"
+                                  : s.status === "error"
+                                    ? "失败"
+                                    : s.status}
                             </span>
                           </td>
                           <td>{s.type === "folder" ? "—" : n}</td>
@@ -357,9 +381,20 @@ export function KbDetailPage() {
                     toast("请填写名称");
                     return;
                   }
-                  addSource(kbId, "manual", prompt.name.trim(), `manual/${prompt.name.trim()}`, undefined, colParent);
-                  toast("创建成功");
-                  setPrompt(null);
+                  void addSource(
+                    kbId,
+                    "manual",
+                    prompt.name.trim(),
+                    `manual/${prompt.name.trim()}`,
+                    undefined,
+                    colParent,
+                  ).then(
+                    () => {
+                      toast("创建成功");
+                      setPrompt(null);
+                    },
+                    (err: unknown) => toast(err instanceof Error ? err.message : "创建失败"),
+                  );
                 }}
               >
                 创建
@@ -446,7 +481,7 @@ function KbSearchTest({ kbId }: { kbId: string }) {
         sourceIds={picked}
         search={searchFromKb(kb)}
         onSearchChange={(next) =>
-          updateKnowledgeBase(kb.id, {
+          void updateKnowledgeBase(kb.id, {
             searchMode: next.searchMode,
             similarity: next.similarity,
             limit: next.limit,
@@ -454,8 +489,19 @@ function KbSearchTest({ kbId }: { kbId: string }) {
           })
         }
         chunks={chunks}
-        defaultQuery="七天无理由怎么退"
+        defaultQuery=""
         placeholder="输入问题，测试当前知识库的语料"
+        onRetrieve={async ({ query, sourceIds, search }) => {
+          const result = await api.searchKb(kb.id, {
+            query,
+            sourceIds,
+            searchMode: search?.searchMode,
+            similarity: search?.similarity,
+            limit: search?.limit,
+            usingRerank: search?.usingRerank,
+          });
+          return { hits: result.hits, message: result.message ?? undefined };
+        }}
       />
     </>
   );

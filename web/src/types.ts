@@ -98,7 +98,9 @@ export interface Source extends ProcessConfig {
   locator: string;
   acl: "internal" | "restricted" | "public";
   status: "synced" | "syncing" | "error";
+  errorMessage?: string;
   updatedAt: string;
+  chunkCount?: number;
 }
 
 export interface Slice {
@@ -206,4 +208,33 @@ export interface ModelTestResult {
   ok: boolean;
   ms: number;
   message: string;
+}
+
+export interface ModelCallSummary {
+  id: string;
+  createdAt: string;
+  modelId: string;
+  modelName: string;
+  mappedModel?: string | null;
+  type: string;
+  provider: string;
+  purpose: string;
+  kind: string;
+  method: string;
+  url: string;
+  httpStatus?: number | null;
+  ok: boolean;
+  latencyMs: number;
+  error?: string | null;
+  kbId?: string | null;
+  sourceId?: string | null;
+  promptTokens?: number | null;
+  completionTokens?: number | null;
+  totalTokens?: number | null;
+  summary: string;
+}
+
+export interface ModelCall extends ModelCallSummary {
+  request: unknown;
+  response: unknown;
 }

@@ -2,15 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api } from "../api";
 import { chunksFromSources } from "./chunks";
 import {
-  chunks as seedChunks,
   endpoints as seedEndpoints,
   evalCases as seedEval,
-  knowledgeBases as seedKbs,
   slices as seedSlices,
-  sources as seedSources,
   tools as seedTools,
 } from "./seed";
-import { DEFAULT_KB_SEARCH, fillProcess, filtersFromSearch, profileFromSearch } from "../constants";
+import { fillProcess, filtersFromSearch, profileFromSearch } from "../constants";
 import type {
   AiModel,
   ApiDatasetServer,
@@ -39,6 +36,7 @@ function bumpVersion(v: string) {
 
 interface Store {
   knowledgeBases: KnowledgeBase[];
+  kbsReady: boolean;
   slices: Slice[];
   sources: Source[];
   tools: RetrievalTool[];
@@ -75,9 +73,9 @@ interface Store {
     llmModel?: string;
     vlmModel?: string;
     rerankModel?: string;
-  }) => string;
-  updateKnowledgeBase: (id: string, patch: Partial<KnowledgeBase>) => void;
-  removeKnowledgeBase: (id: string) => void;
+  }) => Promise<string>;
+  updateKnowledgeBase: (id: string, patch: Partial<KnowledgeBase>) => Promise<void>;
+  removeKnowledgeBase: (id: string) => Promise<void>;
   addSlice: (input: {
     kbId: string;
     name: string;
@@ -93,13 +91,15 @@ interface Store {
     locator: string,
     process?: ProcessConfig,
     parentId?: string,
-  ) => string;
-  updateSource: (id: string, patch: Partial<Source>) => void;
-  retrainSource: (id: string) => void;
+    extra?: { fileId?: string; rawText?: string },
+  ) => Promise<string>;
+  updateSource: (id: string, patch: Partial<Source>) => Promise<void>;
+  retrainSource: (id: string) => Promise<void>;
   updateChunk: (id: string, patch: Partial<Chunk>) => void;
   insertChunk: (sourceId: string, patch?: Partial<Pick<Chunk, "title" | "text" | "a" | "indexes">>) => string;
   removeChunk: (id: string) => void;
-  removeSource: (id: string) => void;
+  removeSource: (id: string) => Promise<void>;
+  loadSourceChunks: (sourceId: string) => Promise<void>;
   addTool: (input: {
     name: string;
     title: string;
@@ -120,12 +120,13 @@ interface Store {
 const StoreContext = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [knowledgeBases, setKnowledgeBases] = useState(seedKbs);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [kbsReady, setKbsReady] = useState(false);
   const [slices, setSlices] = useState(seedSlices);
-  const [sources, setSources] = useState(seedSources);
+  const [sources, setSources] = useState<Source[]>([]);
   const [tools, setTools] = useState(seedTools);
   const [endpoints, setEndpoints] = useState(seedEndpoints);
-  const [chunks, setChunks] = useState(seedChunks);
+  const [chunks, setChunks] = useState<Chunk[]>([]);
   const [evalCases, setEvalCases] = useState(seedEval);
   const [vectorModel, setVectorModelState] = useState("");
   const [llmModel, setLlmModelState] = useState("");
@@ -149,6 +150,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setRewriteFallbackState(ws.rewriteFallback);
   }, []);
 
+  const reloadKbs = useCallback(async () => {
+    const kbs = await api.listKbs();
+    setKnowledgeBases(kbs);
+    const nested = await Promise.all(kbs.map((kb) => api.listSources(kb.id)));
+    setSources(nested.flat());
+    setKbsReady(true);
+  }, []);
+
   const reloadCatalog = useCallback(async () => {
     const [models, ws, providerList] = await Promise.all([
       api.listModels(),
@@ -161,10 +170,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [applyWorkspace]);
 
   useEffect(() => {
-    void reloadCatalog().catch((err: unknown) => {
-      console.error("加载模型配置失败", err);
+    void Promise.all([reloadCatalog(), reloadKbs()]).catch((err: unknown) => {
+      console.error("加载配置失败", err);
     });
-  }, [reloadCatalog]);
+  }, [reloadCatalog, reloadKbs]);
+
+  useEffect(() => {
+    if (!sources.some((s) => s.status === "syncing")) return;
+    const timer = window.setInterval(() => {
+      void reloadKbs().catch(() => undefined);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [sources, reloadKbs]);
 
   const persistWorkspace = useCallback(
     async (patch: {
@@ -242,7 +259,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const addKnowledgeBase = useCallback(
-    (input: {
+    async (input: {
       name: string;
       domain: string;
       description: string;
@@ -256,52 +273,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       vlmModel?: string;
       rerankModel?: string;
     }) => {
-      const id = nid("kb");
-      setKnowledgeBases((prev) => [
-        {
-          id,
-          docCount: 0,
-          kind: input.kind ?? "dataset",
-          vectorModel,
-          llmModel,
-          vlmModel,
-          rerankModel,
-          ...DEFAULT_KB_SEARCH,
-          ...input,
-        },
-        ...prev,
-      ]);
-      return id;
+      const created = await api.createKb({
+        ...input,
+        vectorModel: input.vectorModel || vectorModel,
+        llmModel: input.llmModel || llmModel,
+        vlmModel: input.vlmModel || vlmModel,
+        rerankModel: input.rerankModel ?? rerankModel,
+      });
+      await reloadKbs();
+      return created.id;
     },
-    [vectorModel, llmModel, vlmModel, rerankModel],
+    [vectorModel, llmModel, vlmModel, rerankModel, reloadKbs],
   );
 
-  const updateKnowledgeBase = useCallback((id: string, patch: Partial<KnowledgeBase>) => {
-    setKnowledgeBases((prev) => prev.map((k) => (k.id === id ? { ...k, ...patch } : k)));
-  }, []);
+  const updateKnowledgeBase = useCallback(
+    async (id: string, patch: Partial<KnowledgeBase>) => {
+      const updated = await api.patchKb(id, patch);
+      setKnowledgeBases((prev) => prev.map((k) => (k.id === id ? updated : k)));
+    },
+    [],
+  );
 
-  const removeKnowledgeBase = useCallback((id: string) => {
-    setKnowledgeBases((prev) => {
-      const drop = new Set<string>();
-      const walk = (kid: string) => {
-        drop.add(kid);
-        prev.filter((k) => k.parentId === kid).forEach((k) => walk(k.id));
-      };
-      walk(id);
-      const ids = [...drop];
-      const sliceIds = slices.filter((s) => ids.includes(s.kbId)).map((s) => s.id);
-      const toolIds = tools.filter((t) => ids.includes(t.kbId)).map((t) => t.id);
-      setSources((s) => s.filter((x) => !ids.includes(x.kbId)));
-      setSlices((s) => s.filter((x) => !ids.includes(x.kbId)));
-      setChunks((c) => c.filter((x) => !sliceIds.includes(x.sliceId)));
-      setTools((t) => t.filter((x) => !ids.includes(x.kbId)));
-      setEndpoints((e) =>
-        e.map((x) => ({ ...x, toolIds: x.toolIds.filter((tid) => !toolIds.includes(tid)) })),
-      );
-      setEvalCases((c) => c.filter((x) => !toolIds.includes(x.toolId)));
-      return prev.filter((k) => !drop.has(k.id));
-    });
-  }, [slices, tools]);
+  const removeKnowledgeBase = useCallback(
+    async (id: string) => {
+      await api.deleteKb(id);
+      await reloadKbs();
+    },
+    [reloadKbs],
+  );
 
   const addSlice = useCallback(
     (input: { kbId: string; name: string; chunkStrategy: string; sourceIds: string[] }) => {
@@ -360,91 +359,72 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [tools]);
 
   const addSource = useCallback(
-    (
+    async (
       kbId: string,
       type: SourceType,
       title: string,
       locator: string,
       process?: ProcessConfig,
       parentId?: string,
+      extra?: { fileId?: string; rawText?: string },
     ) => {
-      const now = new Date().toISOString().slice(0, 16).replace("T", " ");
-      const source: Source = {
-        id: nid("src"),
-        kbId,
-        parentId,
+      const created = await api.createSource(kbId, {
         type,
         title,
         locator,
-        acl: type === "feishu" ? "restricted" : type === "web" ? "public" : "internal",
-        status: type === "folder" ? "synced" : "syncing",
-        updatedAt: now,
-        ...fillProcess(process ?? {}),
-      };
-      setSources((prev) => [source, ...prev]);
-      if (type === "folder") {
-        return source.id;
-      }
-      setKnowledgeBases((prev) =>
-        prev.map((k) => (k.id === kbId ? { ...k, docCount: k.docCount + 1 } : k)),
-      );
-      const mine = slices.filter((s) => s.kbId === kbId);
-      const ready = { ...source, status: "synced" as const };
-      if (mine.length === 0) {
-        const sliceId = nid("slice");
-        setSlices((prev) => [
-          {
-            id: sliceId,
-            kbId,
-            name: "默认索引",
-            scope: title,
-            sourceIds: [source.id],
-            chunkStrategy: "adaptive",
-            embedding: vectorModel,
-            status: "ready",
-            version: "v1",
-          },
-          ...prev,
-        ]);
-        setChunks((prev) => [...chunksFromSources(sliceId, [ready], () => nid("c")), ...prev]);
-      } else {
-        const t = mine[0];
-        setSlices((prev) =>
-          prev.map((s) =>
-            s.id === t.id ? { ...s, sourceIds: [...s.sourceIds, source.id] } : s,
-          ),
-        );
-        setChunks((prev) => [...chunksFromSources(t.id, [ready], () => nid("c")), ...prev]);
-      }
-      window.setTimeout(() => {
-        setSources((prev) => prev.map((s) => (s.id === source.id ? { ...s, status: "synced" } : s)));
-      }, 600);
-      return source.id;
+        parentId,
+        process,
+        fileId: extra?.fileId,
+        rawText: extra?.rawText,
+      });
+      await reloadKbs();
+      return created.id;
     },
-    [slices, vectorModel],
+    [reloadKbs],
   );
 
-  const updateSource = useCallback((id: string, patch: Partial<Source>) => {
-    setSources((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  }, []);
+  const updateSource = useCallback(
+    async (id: string, patch: Partial<Source>) => {
+      const processKeys: (keyof ProcessConfig)[] = [
+        "trainingType",
+        "chunkTriggerType",
+        "chunkTriggerMinSize",
+        "indexPrefixTitle",
+        "autoIndexes",
+        "imageIndex",
+        "chunkSettingMode",
+        "chunkSplitMode",
+        "paragraphChunkAIMode",
+        "paragraphChunkDeep",
+        "chunkSize",
+        "chunkSplitter",
+        "indexSize",
+        "qaPrompt",
+        "pdfEnhance",
+        "webSelector",
+        "chunkOverlap",
+        "qaEnhance",
+        "customSplit",
+      ];
+      const process = Object.fromEntries(
+        processKeys.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]]),
+      ) as Partial<ProcessConfig>;
+      const body: { title?: string; process?: ProcessConfig } = {};
+      if (patch.title) body.title = patch.title;
+      if (Object.keys(process).length) body.process = fillProcess({ ...process });
+      const updated = await api.patchSource(id, body);
+      setSources((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+    },
+    [],
+  );
 
-  const retrainSource = useCallback((id: string) => {
-    setSources((prev) => prev.map((s) => (s.id === id ? { ...s, status: "syncing" } : s)));
-    window.setTimeout(() => {
-      setSources((prev) => {
-        const source = prev.find((s) => s.id === id);
-        if (!source) return prev;
-        const slice = slices.find((sl) => sl.sourceIds.includes(id));
-        const sliceId = slice?.id ?? nid("slice");
-        const ready = { ...source, status: "synced" as const };
-        setChunks((cs) => [
-          ...cs.filter((c) => c.sourceId !== id),
-          ...chunksFromSources(sliceId, [ready], () => nid("c")),
-        ]);
-        return prev.map((s) => (s.id === id ? { ...s, status: "synced" } : s));
-      });
-    }, 700);
-  }, [slices]);
+  const retrainSource = useCallback(
+    async (id: string) => {
+      const updated = await api.retrainSource(id);
+      setSources((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+    },
+    [],
+  );
 
   const updateChunk = useCallback((id: string, patch: Partial<Chunk>) => {
     setChunks((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -476,25 +456,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setChunks((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
-  const removeSource = useCallback((id: string) => {
-    setSources((prev) => {
-      const found = prev.find((s) => s.id === id);
-      if (found) {
-        setKnowledgeBases((kbs) =>
-          kbs.map((k) =>
-            k.id === found.kbId ? { ...k, docCount: Math.max(0, k.docCount - 1) } : k,
-          ),
-        );
-      }
-      return prev.filter((s) => s.id !== id);
-    });
-    setChunks((prev) => prev.filter((c) => c.sourceId !== id));
-    setSlices((prev) =>
-      prev.map((s) => ({ ...s, sourceIds: s.sourceIds.filter((sid) => sid !== id) })),
-    );
-    setTools((prev) =>
-      prev.map((t) => ({ ...t, sourceIds: t.sourceIds.filter((sid) => sid !== id) })),
-    );
+  const removeSource = useCallback(
+    async (id: string) => {
+      await api.deleteSource(id);
+      setSources((prev) => prev.filter((s) => s.id !== id));
+      setChunks((prev) => prev.filter((c) => c.sourceId !== id));
+      await reloadKbs();
+    },
+    [reloadKbs],
+  );
+
+  const loadSourceChunks = useCallback(async (sourceId: string) => {
+    const rows = await api.listChunks(sourceId);
+    setChunks((prev) => [...prev.filter((c) => c.sourceId !== sourceId), ...rows]);
   }, []);
 
   const addTool = useCallback(
@@ -602,6 +576,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Store>(
     () => ({
       knowledgeBases,
+      kbsReady,
       slices,
       sources,
       tools,
@@ -638,6 +613,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       insertChunk,
       removeChunk,
       removeSource,
+      loadSourceChunks,
       addTool,
       updateTool,
       removeTool,
@@ -649,6 +625,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       knowledgeBases,
+      kbsReady,
       slices,
       sources,
       tools,
@@ -685,6 +662,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       insertChunk,
       removeChunk,
       removeSource,
+      loadSourceChunks,
       addTool,
       updateTool,
       removeTool,

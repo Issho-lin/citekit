@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Box, Button, Flex, HStack, Input, Tooltip } from "@chakra-ui/react";
 import { ColorIcon, kbIcon } from "./ColorIcon";
 import { MySelect } from "./MySelect";
@@ -32,8 +32,19 @@ export function CreateKbForm({
   const [agent, setAgent] = useState(llmModel);
   const [vlm, setVlm] = useState(vlmModel);
   const [apiServer, setApiServer] = useState<ApiDatasetServer>({});
+  const [saving, setSaving] = useState(false);
 
-  function onSubmit(e: FormEvent) {
+  useEffect(() => {
+    if (vectorModel) setVector((current) => current || vectorModel);
+  }, [vectorModel]);
+  useEffect(() => {
+    if (llmModel) setAgent((current) => current || llmModel);
+  }, [llmModel]);
+  useEffect(() => {
+    if (vlmModel) setVlm((current) => current || vlmModel);
+  }, [vlmModel]);
+
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
       toast("请填写名称");
@@ -55,19 +66,26 @@ export function CreateKbForm({
       toast("请填写钉钉 App Key / App Secret / User ID");
       return;
     }
-    const id = addKnowledgeBase({
-      name: name.trim(),
-      domain: meta?.title ?? "未分类",
-      description: "",
-      kind,
-      parentId,
-      vectorModel: vector,
-      llmModel: agent,
-      vlmModel: vlm,
-      apiDatasetServer: THIRD.includes(kind) ? apiServer : undefined,
-    });
-    toast("创建成功");
-    onCreated(id);
+    setSaving(true);
+    try {
+      const id = await addKnowledgeBase({
+        name: name.trim(),
+        domain: meta?.title ?? "未分类",
+        description: "",
+        kind,
+        parentId,
+        vectorModel: vector,
+        llmModel: agent,
+        vlmModel: vlm,
+        apiDatasetServer: THIRD.includes(kind) ? apiServer : undefined,
+      });
+      toast("创建成功");
+      onCreated(id);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "创建失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -124,6 +142,7 @@ export function CreateKbForm({
               value={vector}
               onChange={setVector}
               list={modelSelectList(aiModels, "embedding", vector)}
+              placeholder="请先启用索引模型"
             />
           </Box>
         </Flex>
@@ -165,7 +184,7 @@ export function CreateKbForm({
         <Button type="button" variant="whiteBase" fontSize="12px" onClick={onCancel}>
           关闭
         </Button>
-        <Button type="submit" fontSize="12px">
+        <Button type="submit" fontSize="12px" isLoading={saving} isDisabled={!vector}>
           创建
         </Button>
       </Flex>

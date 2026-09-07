@@ -60,13 +60,14 @@ export function UploadStep() {
               : importSource === "imageDataset"
                 ? "image"
                 : "upload";
-        addSource(
+        await addSource(
           kbId,
           type,
           item.sourceName,
           item.link || item.dbFileId || `uploads/${item.sourceName}`,
           process,
           parentId,
+          { fileId: item.dbFileId, rawText: item.rawText },
         );
         setSources((state) =>
           state.map((source) => (source.id === item.id ? { ...source, createStatus: "finish" } : source)),

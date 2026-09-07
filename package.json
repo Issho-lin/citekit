@@ -7,7 +7,7 @@
     "dev": "concurrently -n web,api -c cyan,magenta \"pnpm --dir web dev\" \"uv --directory server run citekit-server\"",
     "dev:web": "pnpm --dir web dev",
     "dev:server": "uv --directory server run citekit-server",
-    "dev:db": "docker compose up -d mysql",
+    "dev:db": "docker compose up -d mysql qdrant",
     "start": "pnpm dev"
   },
   "devDependencies": {

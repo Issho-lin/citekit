@@ -6,6 +6,7 @@ from typing import Any
 
 import httpx
 
+from citekit_server.call_log import record_http_call
 from citekit_server.db import AiModelRow
 from citekit_server.provider_protocol import BASE_SUFFIXES, ProviderProtocol, protocol_of
 from citekit_server.schemas import TestOut
@@ -140,9 +141,7 @@ def _should_retry_multimodal(status: int, body: str) -> bool:
 
 async def list_remote_models(base_url: str, api_key: str) -> list[str]:
     url = _join(base_url, "models")
-    headers = {"Authorization": f"Bearer {api_key}"}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        response = await client.get(url, headers=headers)
+    response = await _request_async("GET", url, headers={"Authorization": f"Bearer {api_key}"}, kind="models")
     if response.status_code >= 400:
         raise RuntimeError(f"HTTP {response.status_code} {_trim(response.text)}")
     body = response.json()
@@ -194,21 +193,34 @@ async def test_model(model: AiModelRow, api_key: str = "") -> TestOut:
     url = _endpoint(base, proto, kind)
     body = _payload(model, proto, kind)
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(url, headers=_headers(token), json=body)
-            if (
-                kind == "embedding"
-                and proto.embedding_multimodal_path
-                and model.multimodal is not False
-                and _should_retry_multimodal(response.status_code, response.text)
-            ):
-                kind = "embedding_mm"
-                url = _endpoint(base, proto, kind)
-                response = await client.post(url, headers=_headers(token), json=_payload(model, proto, kind))
-            elif kind == "embedding_mm" and proto.embedding_multimodal_path and response.status_code == 404:
-                kind = "embedding"
-                url = _endpoint(base, proto, kind)
-                response = await client.post(url, headers=_headers(token), json=_payload(model, proto, kind))
+        response = await _request_async("POST", url, headers=_headers(token), json_body=body, kind=kind, model=model)
+        if (
+            kind == "embedding"
+            and proto.embedding_multimodal_path
+            and model.multimodal is not False
+            and _should_retry_multimodal(response.status_code, response.text)
+        ):
+            kind = "embedding_mm"
+            url = _endpoint(base, proto, kind)
+            response = await _request_async(
+                "POST",
+                url,
+                headers=_headers(token),
+                json_body=_payload(model, proto, kind),
+                kind=kind,
+                model=model,
+            )
+        elif kind == "embedding_mm" and proto.embedding_multimodal_path and response.status_code == 404:
+            kind = "embedding"
+            url = _endpoint(base, proto, kind)
+            response = await _request_async(
+                "POST",
+                url,
+                headers=_headers(token),
+                json_body=_payload(model, proto, kind),
+                kind=kind,
+                model=model,
+            )
         ms = int((time.perf_counter() - started) * 1000)
         err = _upstream_error(response.status_code, response.text)
         if err:
@@ -240,3 +252,214 @@ def _trim(text: str, limit: int = 180) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 1] + "…"
+
+
+def _request_sync(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_body: Any = None,
+    kind: str,
+    model: AiModelRow | None = None,
+    timeout: float = 60.0,
+) -> httpx.Response:
+    started = time.perf_counter()
+    status = 0
+    text = ""
+    error: str | None = None
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            kwargs: dict[str, Any] = {"headers": headers}
+            if json_body is not None:
+                kwargs["json"] = json_body
+            response = client.request(method, url, **kwargs)
+        status = response.status_code
+        text = response.text
+        return response
+    except Exception as exc:
+        error = str(exc) or type(exc).__name__
+        raise
+    finally:
+        record_http_call(
+            method=method,
+            url=url,
+            kind=kind,
+            request_body=json_body,
+            status=status,
+            response_text=text,
+            error=error,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            model=model,
+        )
+
+
+async def _request_async(
+    method: str,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_body: Any = None,
+    kind: str,
+    model: AiModelRow | None = None,
+    timeout: float = 20.0,
+) -> httpx.Response:
+    started = time.perf_counter()
+    status = 0
+    text = ""
+    error: str | None = None
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            kwargs: dict[str, Any] = {"headers": headers}
+            if json_body is not None:
+                kwargs["json"] = json_body
+            response = await client.request(method, url, **kwargs)
+        status = response.status_code
+        text = response.text
+        return response
+    except Exception as exc:
+        error = str(exc) or type(exc).__name__
+        raise
+    finally:
+        record_http_call(
+            method=method,
+            url=url,
+            kind=kind,
+            request_body=json_body,
+            status=status,
+            response_text=text,
+            error=error,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            model=model,
+        )
+
+
+def _require_base(model: AiModelRow) -> tuple[str, ProviderProtocol]:
+    base = (model.request_url or "").strip()
+    if not base:
+        raise RuntimeError("请填写接口地址")
+    return base, protocol_of(model.provider)
+
+
+def embed_texts(model: AiModelRow, api_key: str, texts: list[str]) -> list[list[float]]:
+    if not texts:
+        return []
+    token = (api_key or model.request_auth or "").strip()
+    if not token:
+        raise RuntimeError("请填写 API 密钥，或先在供应商配置里保存密钥")
+    base, proto = _require_base(model)
+    multimodal = _is_multimodal_embedding(model)
+    kind = _kind(model, multimodal=multimodal)
+    url = _endpoint(base, proto, kind)
+    batch = max(int(model.batch_size or 8), 1)
+    out: list[list[float]] = []
+    for i in range(0, len(texts), batch):
+        chunk = texts[i : i + batch]
+        if kind == "embedding_mm" and proto.embedding_mm_body == "tokenhub":
+            payload: dict[str, Any] = {
+                "model": _model_id(model),
+                "input": [{"type": "text", "text": item} for item in chunk],
+            }
+        else:
+            payload = {"model": _model_id(model), "input": chunk if len(chunk) > 1 else chunk[0]}
+        response = _request_sync("POST", url, headers=_headers(token), json_body=payload, kind=kind, model=model)
+        err = _upstream_error(response.status_code, response.text)
+        if err:
+            raise RuntimeError(err)
+        out.extend(_parse_embeddings(response.json()))
+    if model.normalization:
+        out = [_l2(vec) for vec in out]
+    if len(out) != len(texts):
+        raise RuntimeError(f"向量数量不匹配：期望 {len(texts)}，得到 {len(out)}")
+    return out
+
+
+def rerank_texts(model: AiModelRow, api_key: str, query: str, documents: list[str]) -> list[float]:
+    if not documents:
+        return []
+    token = (api_key or model.request_auth or "").strip()
+    if not token:
+        raise RuntimeError("请填写 API 密钥，或先在供应商配置里保存密钥")
+    base, proto = _require_base(model)
+    refused = _refuse_rerank(base, proto)
+    if refused:
+        raise RuntimeError(refused)
+    url = _endpoint(base, proto, "rerank")
+    model_id = _model_id(model)
+    if proto.rerank_body == "nested":
+        payload: dict[str, Any] = {
+            "model": model_id,
+            "input": {"query": query, "documents": documents},
+            "parameters": {"top_n": len(documents), "return_documents": False},
+        }
+    else:
+        payload = {"model": model_id, "query": query, "documents": documents}
+    response = _request_sync("POST", url, headers=_headers(token), json_body=payload, kind="rerank", model=model)
+    err = _upstream_error(response.status_code, response.text)
+    if err:
+        raise RuntimeError(err)
+    return _parse_rerank_scores(response.json(), len(documents))
+
+
+def _l2(vec: list[float]) -> list[float]:
+    norm = sum(x * x for x in vec) ** 0.5
+    if norm <= 0:
+        return vec
+    return [x / norm for x in vec]
+
+
+def _parse_embeddings(body: Any) -> list[list[float]]:
+    rows: list[Any] = []
+    if isinstance(body, dict):
+        data = body.get("data")
+        if isinstance(data, list):
+            rows = data
+        else:
+            output = body.get("output")
+            if isinstance(output, dict):
+                for key in ("embeddings", "data", "embedding"):
+                    if isinstance(output.get(key), list):
+                        rows = output[key]
+                        break
+            if not rows and isinstance(body.get("embeddings"), list):
+                rows = body["embeddings"]
+    elif isinstance(body, list):
+        rows = body
+    out: list[tuple[int, list[float]]] = []
+    for index, item in enumerate(rows):
+        vec: list[float] | None = None
+        pos = index
+        if isinstance(item, dict):
+            pos = int(item.get("index", index))
+            raw = item.get("embedding") or item.get("vector")
+            if isinstance(raw, list):
+                vec = [float(x) for x in raw]
+        elif isinstance(item, list):
+            vec = [float(x) for x in item]
+        if vec:
+            out.append((pos, vec))
+    out.sort(key=lambda pair: pair[0])
+    if not out:
+        raise RuntimeError("上游没有返回向量")
+    return [item[1] for item in out]
+
+
+def _parse_rerank_scores(body: Any, n: int) -> list[float]:
+    rows: list[Any] = []
+    if isinstance(body, dict):
+        if isinstance(body.get("results"), list):
+            rows = body["results"]
+        else:
+            output = body.get("output")
+            if isinstance(output, dict) and isinstance(output.get("results"), list):
+                rows = output["results"]
+    scores = [0.0] * n
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        idx = int(item.get("index", 0))
+        score = item.get("relevance_score", item.get("score", 0))
+        if 0 <= idx < n:
+            scores[idx] = float(score or 0)
+    return scores
+

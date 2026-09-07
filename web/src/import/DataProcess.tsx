@@ -22,7 +22,7 @@ import {
   Textarea,
   useDisclosure,
 } from "@chakra-ui/react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { MySelect } from "../components/MySelect";
 import { QuestionTip } from "../components/QuestionTip";
 import { DEFAULT_QA_PROMPT, INDEX_SIZES, SPLIT_SIGNS } from "../constants";
@@ -201,6 +201,7 @@ function LeftRadioCard({
           borderTop="1px solid"
           borderColor="myGray.200"
           cursor="default"
+          userSelect="text"
           onClick={(e) => e.stopPropagation()}
         >
           {children}
@@ -274,6 +275,62 @@ function SplitModeGroup({
         );
       })}
     </Flex>
+  );
+}
+
+function IntInput({
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+  h = "32px",
+  bg,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (n: number) => void;
+  h?: string;
+  bg?: string;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => {
+    setText(String(value));
+  }, [value]);
+
+  function commit(raw: string) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      setText(String(value));
+      return;
+    }
+    const next = Math.min(max, Math.max(min, n));
+    setText(String(next));
+    if (next !== value) onChange(next);
+  }
+
+  return (
+    <NumberInput
+      min={min}
+      max={max}
+      step={step}
+      size="sm"
+      value={text}
+      keepWithinRange={false}
+      clampValueOnBlur={false}
+      onChange={(raw) => {
+        setText(raw);
+        const n = Number(raw);
+        if (raw.trim() !== "" && Number.isFinite(n) && n >= min && n <= max && n !== value) {
+          onChange(n);
+        }
+      }}
+      onBlur={() => commit(text)}
+    >
+      <NumberInputField h={h} bg={bg} />
+    </NumberInput>
   );
 }
 
@@ -355,19 +412,15 @@ function ChunkSettings({
             </Box>
             {value.chunkTriggerType === "minSize" && (
               <Box flex="1 0 0">
-                <NumberInput
+                <IntInput
                   min={100}
                   max={100000}
                   step={100}
-                  size="sm"
                   h="34px"
+                  bg="white"
                   value={value.chunkTriggerMinSize}
-                  onChange={(_, n) => {
-                    if (Number.isFinite(n)) patch({ chunkTriggerMinSize: n });
-                  }}
-                >
-                  <NumberInputField h="34px" bg="white" />
-                </NumberInput>
+                  onChange={(n) => patch({ chunkTriggerMinSize: n })}
+                />
               </Box>
             )}
           </HStack>
@@ -471,33 +524,23 @@ function ChunkSettings({
                     </Box>
                     <Box mt={2} fontSize="sm">
                       <Box mb={1}>最大段落深度</Box>
-                      <NumberInput
+                      <IntInput
                         min={1}
                         max={8}
-                        step={1}
-                        size="sm"
                         value={value.paragraphChunkDeep}
-                        onChange={(_, n) => {
-                          if (Number.isFinite(n)) patch({ paragraphChunkDeep: n });
-                        }}
-                      >
-                        <NumberInputField h="32px" bg="myGray.50" />
-                      </NumberInput>
+                        bg="white"
+                        onChange={(n) => patch({ paragraphChunkDeep: n })}
+                      />
                     </Box>
                     <Box mt={2} fontSize="sm">
                       <FieldLabel tip={PARENT_CHUNK_MAX_TIP}>最大分块大小（父块）</FieldLabel>
-                      <NumberInput
+                      <IntInput
                         min={100}
                         max={3000}
                         step={100}
-                        size="sm"
                         value={value.chunkSize}
-                        onChange={(_, n) => {
-                          if (Number.isFinite(n)) patch({ chunkSize: n });
-                        }}
-                      >
-                        <NumberInputField h="32px" />
-                      </NumberInput>
+                        onChange={(n) => patch({ chunkSize: n })}
+                      />
                     </Box>
                   </>
                 )}
@@ -505,18 +548,13 @@ function ChunkSettings({
                 {value.chunkSplitMode === "size" && (
                   <Box mt={3} fontSize="sm">
                     <FieldLabel tip={PARENT_CHUNK_TIP}>分块大小（父块）</FieldLabel>
-                    <NumberInput
+                    <IntInput
                       min={100}
                       max={3000}
                       step={100}
-                      size="sm"
                       value={value.chunkSize}
-                      onChange={(_, n) => {
-                        if (Number.isFinite(n)) patch({ chunkSize: n });
-                      }}
-                    >
-                      <NumberInputField h="32px" />
-                    </NumberInput>
+                      onChange={(n) => patch({ chunkSize: n })}
+                    />
                   </Box>
                 )}
 
