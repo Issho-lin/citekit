@@ -227,7 +227,7 @@ export function ModelEditModal({
             </Field>
             <Field
               label="模型映射"
-              tip="本系统模型 ID 和上游不一致时填写。留空则请求时使用上面的模型 ID。"
+              tip="本系统模型 ID 和上游不一致时填写。豆包方舟可填控制台接入点（ep- 开头）。留空则请求时使用上面的模型 ID。"
             >
               <Input
                 h={fieldH}

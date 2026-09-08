@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, type NavigateFunction } from "react-router-dom";
+import { BrandLogo } from "./BrandLogo";
 import { EmptyTipArt } from "./ColorIcon";
+
+export function goBack(nav: NavigateFunction, fallback: string) {
+  const idx = (window.history.state as { idx?: number } | null)?.idx;
+  if (typeof idx === "number" && idx > 0) nav(-1);
+  else nav(fallback);
+}
 
 export function PageHero({
   title,
@@ -52,6 +59,45 @@ export function NextBar({
       <Link to={to} className="next-bar-btn">
         {cta}
       </Link>
+    </div>
+  );
+}
+
+export function PageLoading({
+  label = "正在加载",
+  hint = "请稍候",
+  compact = false,
+}: {
+  label?: string;
+  hint?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={compact ? "page-loading compact" : "page-loading"}
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div className="page-loading-mark" aria-hidden>
+        <span className="page-loading-halo" />
+        <span className="page-loading-orbit" />
+        <span className="page-loading-logo">
+          <BrandLogo size={compact ? 28 : 36} />
+        </span>
+      </div>
+      {compact ? null : (
+        <div className="page-loading-skel" aria-hidden>
+          <span className="page-loading-skel-title" />
+          <div className="page-loading-skel-cards">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      )}
+      <p className="page-loading-title">{label}</p>
+      <p className="page-loading-hint">{hint}</p>
     </div>
   );
 }

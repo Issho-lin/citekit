@@ -95,7 +95,7 @@ interface Store {
   ) => Promise<string>;
   updateSource: (id: string, patch: Partial<Source>) => Promise<void>;
   retrainSource: (id: string) => Promise<void>;
-  updateChunk: (id: string, patch: Partial<Chunk>) => void;
+  updateChunk: (id: string, patch: Partial<Chunk>) => Promise<void>;
   insertChunk: (sourceId: string, patch?: Partial<Pick<Chunk, "title" | "text" | "a" | "indexes">>) => string;
   removeChunk: (id: string) => void;
   removeSource: (id: string) => Promise<void>;
@@ -426,8 +426,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const updateChunk = useCallback((id: string, patch: Partial<Chunk>) => {
-    setChunks((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const updateChunk = useCallback(async (id: string, patch: Partial<Chunk>) => {
+    const updated = await api.patchChunk(id, {
+      title: patch.title,
+      text: patch.text,
+      a: patch.a,
+      indexes: patch.indexes,
+    });
+    setChunks((prev) => prev.map((c) => (c.id === id ? { ...c, ...updated } : c)));
   }, []);
 
   const insertChunk = useCallback((sourceId: string, patch?: Partial<Pick<Chunk, "title" | "text" | "a" | "indexes">>) => {

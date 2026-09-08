@@ -108,7 +108,7 @@ export const api = {
     ),
   previewKb: (kbId: string, body: { fileId?: string; rawText?: string; process?: ProcessConfig }) =>
     request<{
-      chunks: { title: string; text: string; chars: number }[];
+      chunks: { title: string; text: string; chars: number; answer?: string; indexes?: { id?: string; type?: string; text: string }[] }[];
       total: number;
       shown: number;
       parsedText: string;
@@ -121,6 +121,7 @@ export const api = {
       avgChars: number;
       oversize: number;
       chunkSize: number;
+      indexCount: number;
     }>(`/api/kbs/${encodeURIComponent(kbId)}/preview`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -151,7 +152,18 @@ export const api = {
     request<{ ok: boolean }>(`/api/sources/${encodeURIComponent(id)}`, { method: "DELETE" }),
   retrainSource: (id: string) =>
     request<Source>(`/api/sources/${encodeURIComponent(id)}/retrain`, { method: "POST" }),
+  sourceFileUrl: (id: string, download = false) =>
+    `/api/sources/${encodeURIComponent(id)}/file${download ? "?download=1" : ""}`,
+  sourceFileText: (id: string) =>
+    request<{ name: string; mime: string; size: number; text: string }>(
+      `/api/sources/${encodeURIComponent(id)}/file?format=text`,
+    ),
   listChunks: (sourceId: string) => request<Chunk[]>(`/api/sources/${encodeURIComponent(sourceId)}/chunks`),
+  patchChunk: (id: string, patch: { title?: string; text?: string; a?: string; indexes?: Chunk["indexes"] }) =>
+    request<Chunk>(`/api/chunks/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
   searchKb: (
     kbId: string,
     body: {

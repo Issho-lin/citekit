@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-import shutil
+import mimetypes
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from minio.error import S3Error
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from citekit_server.db import (
     ChunkRow,
@@ -14,14 +18,14 @@ from citekit_server.db import (
     get_db,
 )
 from citekit_server.ids import new_id
-from citekit_server.ingest import build_preview, ingest_source, now_stamp, uploads_dir
-from citekit_server.parse import extract_text
+from citekit_server.ingest import build_preview_from_kb, ingest_source, now_stamp, reindex_chunk
 from citekit_server.retrieve import search_kb
 from citekit_server.schemas import (
     FileOut,
     KnowledgeBaseIn,
     KnowledgeBaseOut,
     KnowledgeBasePatch,
+    OriginalFileText,
     PreviewIn,
     PreviewOut,
     SearchIn,
@@ -30,8 +34,19 @@ from citekit_server.schemas import (
     SourceOut,
     SourcePatch,
     ChunkOut,
+    ChunkPatch,
 )
 from citekit_server.serialize import chunk_to_out, kb_to_out, source_to_out
+from citekit_server.parse import extract_text
+from citekit_server.storage import (
+    as_local_path,
+    delete_object,
+    delete_prefix,
+    object_key,
+    object_stat,
+    open_object,
+    put_bytes,
+)
 from citekit_server.vectors import delete_source_points, drop_kb
 from citekit_server.workspace_logic import ensure_workspace, pick_active
 
@@ -51,6 +66,47 @@ def _source(db: Session, source_id: str) -> SourceRow:
     if not row:
         raise HTTPException(404, "数据集不存在")
     return row
+
+
+def _uploaded_for(db: Session, row: SourceRow) -> UploadedFileRow | None:
+    if not row.file_id:
+        return None
+    uploaded = db.get(UploadedFileRow, row.file_id)
+    if not uploaded or uploaded.kb_id != row.kb_id:
+        return None
+    return uploaded
+
+
+def _guess_mime(name: str, stored: str = "") -> str:
+    if stored:
+        return stored
+    guessed, _ = mimetypes.guess_type(name)
+    return guessed or "application/octet-stream"
+
+
+def _disposition(name: str, *, download: bool) -> str:
+    kind = "attachment" if download else "inline"
+    try:
+        name.encode("ascii")
+        fallback = name.replace('"', "")
+    except UnicodeEncodeError:
+        fallback = "file"
+    return f"{kind}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name)}"
+
+
+def _forget_upload(db: Session, file_id: str | None, *, except_source_id: str | None = None) -> None:
+    if not file_id:
+        return
+    others = db.query(SourceRow).filter(SourceRow.file_id == file_id)
+    if except_source_id:
+        others = others.filter(SourceRow.id != except_source_id)
+    if others.first():
+        return
+    uploaded = db.get(UploadedFileRow, file_id)
+    if not uploaded:
+        return
+    delete_object(uploaded.path)
+    db.delete(uploaded)
 
 
 def _doc_count(db: Session, kb_id: str) -> int:
@@ -155,7 +211,7 @@ def delete_kb(kb_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
         db.query(SourceRow).filter(SourceRow.kb_id == kid_id).delete()
         db.query(UploadedFileRow).filter(UploadedFileRow.kb_id == kid_id).delete()
         drop_kb(kid_id)
-        shutil.rmtree(uploads_dir(kid_id), ignore_errors=True)
+        delete_prefix(f"{kid_id}/")
         item = db.get(KnowledgeBaseRow, kid_id)
         if item:
             db.delete(item)
@@ -173,15 +229,16 @@ async def upload_file(kb_id: str, file: UploadFile = File(...), db: Session = De
         raise HTTPException(400, "文件超过 50MB")
     file_id = new_id("file")
     name = Path(file.filename or "upload.bin").name
-    dest = uploads_dir(kb_id) / file_id
-    dest.mkdir(parents=True, exist_ok=True)
-    path = dest / name
-    path.write_bytes(data)
+    key = object_key(kb_id, file_id, name)
+    try:
+        put_bytes(key, data, file.content_type or "application/octet-stream")
+    except Exception as exc:
+        raise HTTPException(503, "对象存储不可用，无法上传文件") from exc
     row = UploadedFileRow(
         id=file_id,
         kb_id=kb_id,
         name=name,
-        path=str(path),
+        path=key,
         size=len(data),
         mime=file.content_type or "",
     )
@@ -192,21 +249,31 @@ async def upload_file(kb_id: str, file: UploadFile = File(...), db: Session = De
 
 @router.post("/kbs/{kb_id}/preview", response_model=PreviewOut)
 def preview(kb_id: str, body: PreviewIn, db: Session = Depends(get_db)) -> PreviewOut:
-    _kb(db, kb_id)
+    kb = _kb(db, kb_id)
     text = (body.rawText or "").strip()
     title = "预览"
     filename = ""
-    if not text and body.fileId:
+    file_path = None
+    if body.fileId:
         uploaded = db.get(UploadedFileRow, body.fileId)
         if not uploaded or uploaded.kb_id != kb_id:
             raise HTTPException(404, "文件不存在")
         title = uploaded.name
         filename = uploaded.name
-        try:
-            text = extract_text(uploaded.path, uploaded.name)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
-    return build_preview(text, body.process, title, filename=filename)
+        file_path = uploaded.path
+    try:
+        with as_local_path(file_path, filename) as local_path:
+            return build_preview_from_kb(
+                db,
+                kb,
+                text=text,
+                file_path=local_path,
+                filename=filename,
+                title=title,
+                process=body.process,
+            )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get("/kbs/{kb_id}/sources", response_model=list[SourceOut])
@@ -279,6 +346,7 @@ def delete_source(source_id: str, db: Session = Depends(get_db)) -> dict[str, bo
     row = _source(db, source_id)
     db.query(ChunkRow).filter(ChunkRow.source_id == row.id).delete()
     delete_source_points(row.kb_id, row.id)
+    _forget_upload(db, row.file_id, except_source_id=row.id)
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -298,11 +366,101 @@ def retrain_source(source_id: str, background: BackgroundTasks, db: Session = De
     return source_to_out(row)
 
 
+@router.get("/sources/{source_id}/file")
+def get_source_file(
+    source_id: str,
+    download: bool = False,
+    format: str | None = None,
+    db: Session = Depends(get_db),
+):
+    row = _source(db, source_id)
+    uploaded = _uploaded_for(db, row)
+    raw = (row.raw_text or "").strip()
+    if format == "text":
+        if uploaded:
+            try:
+                with as_local_path(uploaded.path, uploaded.name) as path:
+                    if not path:
+                        raise HTTPException(404, "原文件不存在")
+                    try:
+                        text = extract_text(path, uploaded.name)
+                    except ValueError:
+                        text = ""
+            except RuntimeError as exc:
+                raise HTTPException(404, str(exc)) from exc
+            return OriginalFileText(
+                name=uploaded.name,
+                mime=_guess_mime(uploaded.name, uploaded.mime),
+                size=uploaded.size,
+                text=text,
+            )
+        if raw:
+            name = f"{Path(row.title).stem or '原文'}.txt"
+            data = raw.encode("utf-8")
+            return OriginalFileText(name=name, mime="text/plain; charset=utf-8", size=len(data), text=raw)
+        raise HTTPException(404, "该集合没有原文件")
+
+    if uploaded:
+        mime = _guess_mime(uploaded.name, uploaded.mime)
+        headers = {"Content-Disposition": _disposition(uploaded.name, download=download)}
+        local = Path(uploaded.path)
+        if local.is_file():
+            return FileResponse(path=local, media_type=mime, headers=headers)
+        try:
+            obj = open_object(uploaded.path)
+            stat = object_stat(uploaded.path)
+            headers["Content-Length"] = str(stat.size)
+        except S3Error as exc:
+            raise HTTPException(404, "原文件不存在或对象存储不可用") from exc
+
+        def _close() -> None:
+            obj.close()
+            obj.release_conn()
+
+        return StreamingResponse(
+            obj.stream(64 * 1024),
+            media_type=mime,
+            headers=headers,
+            background=BackgroundTask(_close),
+        )
+    if raw:
+        name = f"{Path(row.title).stem or '原文'}.txt"
+        data = raw.encode("utf-8")
+        return Response(
+            content=data,
+            media_type="text/plain; charset=utf-8",
+            headers={"Content-Disposition": _disposition(name, download=download)},
+        )
+    raise HTTPException(404, "该集合没有原文件")
+
+
 @router.get("/sources/{source_id}/chunks", response_model=list[ChunkOut])
 def list_chunks(source_id: str, db: Session = Depends(get_db)) -> list[ChunkOut]:
     _source(db, source_id)
     rows = db.query(ChunkRow).filter(ChunkRow.source_id == source_id).order_by(ChunkRow.position).all()
     return [chunk_to_out(row) for row in rows]
+
+
+@router.patch("/chunks/{chunk_id}", response_model=ChunkOut)
+def patch_chunk(chunk_id: str, body: ChunkPatch, db: Session = Depends(get_db)) -> ChunkOut:
+    row = db.get(ChunkRow, chunk_id)
+    if not row:
+        raise HTTPException(404, "数据不存在")
+    if body.title is not None:
+        row.title = body.title.strip()[:255] or row.title
+    if body.text is not None:
+        row.text = body.text
+    if body.a is not None:
+        row.answer = body.a or None
+    if body.indexes is not None:
+        row.indexes = body.indexes
+    try:
+        reindex_chunk(db, row)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    db.commit()
+    db.refresh(row)
+    return chunk_to_out(row)
 
 
 @router.post("/kbs/{kb_id}/search", response_model=SearchOut)

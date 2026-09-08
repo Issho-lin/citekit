@@ -122,6 +122,8 @@ class ChunkRow(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     locator: Mapped[str] = mapped_column(String(255), default="")
     position: Mapped[int] = mapped_column(Integer, default=0)
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    indexes: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class ModelCallRow(Base):
@@ -189,6 +191,12 @@ def ensure_schema() -> None:
                 conn.execute(text("ALTER TABLE providers ADD COLUMN default_base_url TEXT NULL"))
             if "api_key" not in cols:
                 conn.execute(text("ALTER TABLE providers ADD COLUMN api_key TEXT NULL"))
+        if "kb_chunks" in names:
+            cols = {item["name"] for item in inspector.get_columns("kb_chunks")}
+            if "answer" not in cols:
+                conn.execute(text("ALTER TABLE kb_chunks ADD COLUMN answer TEXT NULL"))
+            if "indexes" not in cols:
+                conn.execute(text("ALTER TABLE kb_chunks ADD COLUMN indexes JSON NULL"))
 
 
 def get_db():

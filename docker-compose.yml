@@ -1,7 +1,7 @@
-# 本地开发：docker compose up -d mysql qdrant
+# 本地开发：docker compose up -d mysql qdrant minio
 # 全文/图谱（后置）：docker compose up -d opensearch neo4j
 #
-# 端口：MySQL 3306 | Qdrant 6333 | OpenSearch 9200 | Neo4j 7474 / 7687
+# 端口：MySQL 3306 | Qdrant 6333 | MinIO 9000 / 控制台 9001 | OpenSearch 9200 | Neo4j 7474 / 7687
 
 services:
   mysql:
@@ -34,6 +34,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: citekit
+      MINIO_ROOT_PASSWORD: citekitsecret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9000"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   opensearch:
     image: opensearchproject/opensearch:2.11.0
@@ -72,5 +89,6 @@ services:
 volumes:
   mysql_data:
   qdrant_data:
+  minio_data:
   opensearch_data:
   neo4j_data:

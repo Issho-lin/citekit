@@ -101,6 +101,8 @@ export interface Source extends ProcessConfig {
   errorMessage?: string;
   updatedAt: string;
   chunkCount?: number;
+  fileId?: string;
+  hasOriginal?: boolean;
 }
 
 export interface Slice {
@@ -158,7 +160,7 @@ export interface Chunk {
   indexes?: ChunkIndex[];
 }
 
-export type ChunkIndexType = "default" | "custom";
+export type ChunkIndexType = "default" | "custom" | "child" | "auto" | "image";
 
 export interface ChunkIndex {
   id: string;

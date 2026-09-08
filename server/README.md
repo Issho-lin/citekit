@@ -1,12 +1,13 @@
 # Citekit Server
 
-当前已接 MySQL：模型目录、工作空间默认模型，以及通用知识库的创建、本地文件入库和试搜。向量写入 Qdrant。检索工具与 MCP 仍未实现。
+当前已接 MySQL：模型目录、工作空间默认模型，以及通用知识库的创建、本地文件入库和试搜。向量写入 Qdrant，原文件写入 MinIO。检索工具与 MCP 仍未实现。
 
 ## 要求
 
 - Python 3.12+
 - [uv](https://docs.astral.sh/uv/)
 - MySQL 8（仓库根目录 `pnpm dev:db` 或 `docker compose up -d mysql`）
+- MinIO（`pnpm dev:db` 一并启动，API `127.0.0.1:9000`）
 
 ## 本地运行
 

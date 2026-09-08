@@ -13,6 +13,17 @@ from citekit_server.upstream import embed_texts, rerank_texts
 from citekit_server.vectors import search as vector_search
 
 
+def _blob(row: ChunkRow) -> str:
+    bits = [row.title, row.text, row.answer or ""]
+    if isinstance(row.indexes, list):
+        for item in row.indexes:
+            if isinstance(item, dict):
+                bits.append(str(item.get("text") or ""))
+            else:
+                bits.append(str(item))
+    return " ".join(bits)
+
+
 def _keyword_score(query: str, text: str) -> float:
     q = query.strip().lower()
     if not q:
@@ -30,6 +41,11 @@ def _keyword_score(query: str, text: str) -> float:
         if hits:
             score += min(0.5, 0.08 * hits)
     return min(1.0, score)
+
+
+def _hit_label(kind: str, base: str) -> str:
+    extra = {"child": "子块", "auto": "补充索引", "image": "图片"}.get(kind)
+    return f"{base} · {extra}" if extra else base
 
 
 def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
@@ -62,7 +78,7 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
 
     if mode in {"fullText", "mix"}:
         for row in chunks:
-            score = _keyword_score(query, f"{row.title} {row.text}")
+            score = _keyword_score(query, _blob(row))
             if score > 0:
                 scored[row.id] = (score, "全文检索")
 
@@ -82,11 +98,13 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             if cid not in by_id:
                 continue
             score = float(hit.score or 0)
+            kind = str(payload.get("index_type") or "")
+            label = _hit_label(kind, "语义检索")
             prev = scored.get(cid)
             if prev:
-                scored[cid] = ((prev[0] + score) / 2, "混合检索")
+                scored[cid] = ((prev[0] + score) / 2, _hit_label(kind, "混合检索"))
             else:
-                scored[cid] = (score, "语义检索")
+                scored[cid] = (score, label)
 
     ranked = sorted(scored.items(), key=lambda item: item[1][0], reverse=True)
     ranked = [(cid, score, note) for cid, (score, note) in ranked if score >= body.similarity]
@@ -97,7 +115,10 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
         rerank_row = db.get(AiModelRow, kb.rerank_model)
         if rerank_row and rerank_row.type == "rerank":
             pool = ranked[: max(body.limit, 8)]
-            docs = [by_id[cid].text for cid, _, _ in pool]
+            docs = [
+                f"{by_id[cid].text}\n{by_id[cid].answer}" if by_id[cid].answer else by_id[cid].text
+                for cid, _, _ in pool
+            ]
             try:
                 with call_scope(purpose="rerank", kb_id=kb.id):
                     scores = rerank_texts(rerank_row, resolve_auth(db, rerank_row), query, docs)

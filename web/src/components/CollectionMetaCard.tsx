@@ -1,6 +1,7 @@
-import { Button } from "@chakra-ui/react";
+import { Button, useDisclosure } from "@chakra-ui/react";
 import { SOURCE_LABEL } from "../constants";
 import type { ProcessConfig, Source } from "../types";
+import { OriginalFileModal } from "./OriginalFileModal";
 import { useToast } from "./Toast";
 
 function yesNo(v: boolean) {
@@ -9,6 +10,7 @@ function yesNo(v: boolean) {
 
 export function CollectionMetaCard({ source, process }: { source: Source; process: ProcessConfig }) {
   const toast = useToast();
+  const reader = useDisclosure();
   const rows: { label: string; value: string }[] = [
     { label: "集合 ID", value: source.id },
     { label: "来源", value: SOURCE_LABEL[source.type] },
@@ -35,10 +37,19 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
       <Button
         variant="whitePrimary"
         mt={2}
-        onClick={() => toast("演示环境无法打开原文件")}
+        onClick={() => {
+          if (source.hasOriginal === false) {
+            toast("该集合没有原文件");
+            return;
+          }
+          reader.onOpen();
+        }}
       >
         阅读原文件
       </Button>
+      {reader.isOpen ? (
+        <OriginalFileModal source={source} isOpen={reader.isOpen} onClose={reader.onClose} />
+      ) : null}
     </aside>
   );
 }

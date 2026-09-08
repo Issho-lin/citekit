@@ -254,6 +254,8 @@ class SourceOut(BaseModel):
     chunkOverlap: int = 0
     qaEnhance: bool = False
     customSplit: str = ""
+    fileId: str | None = None
+    hasOriginal: bool = False
 
 
 class SourceIn(BaseModel):
@@ -282,10 +284,24 @@ class ChunkOut(BaseModel):
     indexes: list[dict] | None = None
 
 
+class ChunkPatch(BaseModel):
+    title: str | None = None
+    text: str | None = None
+    a: str | None = None
+    indexes: list[dict] | None = None
+
+
 class FileOut(BaseModel):
     id: str
     name: str
     size: int
+
+
+class OriginalFileText(BaseModel):
+    name: str
+    mime: str
+    size: int
+    text: str
 
 
 class PreviewIn(BaseModel):
@@ -298,6 +314,8 @@ class PreviewChunk(BaseModel):
     title: str
     text: str
     chars: int = 0
+    answer: str = ""
+    indexes: list[dict] = []
 
 
 class PreviewOut(BaseModel):
@@ -314,6 +332,7 @@ class PreviewOut(BaseModel):
     avgChars: int = 0
     oversize: int = 0
     chunkSize: int = 1000
+    indexCount: int = 0
 
 
 class SearchIn(BaseModel):

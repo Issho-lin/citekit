@@ -6,6 +6,15 @@ export function IconQuestion({ size = 14 }: { size?: number }) {
   );
 }
 
+export function IconDownload({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8 1.2a.8.8 0 0 1 .8.8v6.27l2.14-2.14a.8.8 0 0 1 1.13 1.14l-3.5 3.5a.8.8 0 0 1-1.14 0l-3.5-3.5a.8.8 0 0 1 1.14-1.14L7.2 8.27V2a.8.8 0 0 1 .8-.8Z" />
+      <path d="M2.4 10.4a.8.8 0 0 1 .8.8v1.2c0 .22.18.4.4.4h8.8a.4.4 0 0 0 .4-.4v-1.2a.8.8 0 1 1 1.6 0v1.2A2 2 0 0 1 12.4 14H3.6A2 2 0 0 1 1.6 12.4v-1.2a.8.8 0 0 1 .8-.8Z" />
+    </svg>
+  );
+}
+
 export function IconEdit({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 12 12" fill="currentColor">

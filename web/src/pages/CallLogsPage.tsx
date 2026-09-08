@@ -13,7 +13,7 @@ import {
 } from "@chakra-ui/react";
 import { api } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { DataTable, Empty, PageHero, Panel } from "../components/chrome";
+import { DataTable, Empty, PageHero, PageLoading, Panel } from "../components/chrome";
 import { MySelect } from "../components/MySelect";
 import { ProviderAvatar } from "../components/model/shared";
 import { useToast } from "../components/Toast";
@@ -28,6 +28,11 @@ const PURPOSE_LABEL: Record<string, string> = {
   rerank: "重排",
   chat: "对话",
   embed: "向量化",
+  qa: "问答提取",
+  paragraph: "识别段落",
+  pdf_enhance: "PDF 增强",
+  image_index: "图片索引",
+  auto_index: "补充索引",
   call: "其它",
 };
 
@@ -183,7 +188,9 @@ export function CallLogsPage() {
           />
         </div>
 
-        {items.length === 0 && !loading ? (
+        {loading && items.length === 0 ? (
+          <PageLoading compact label="正在拉取调用记录" />
+        ) : items.length === 0 ? (
           <Empty
             text={
               <>
@@ -237,7 +244,7 @@ export function CallLogsPage() {
         <ModalContent maxW="880px">
           <ModalHeader fontSize="16px">调用详情</ModalHeader>
           <ModalBody pb={6}>
-            {detail ? <CallDetail call={detail} onCopy={copy} /> : <div className="page-desc">加载中…</div>}
+            {detail ? <CallDetail call={detail} onCopy={copy} /> : <PageLoading compact label="正在打开详情" />}
           </ModalBody>
         </ModalContent>
       </Modal>

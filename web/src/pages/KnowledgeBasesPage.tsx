@@ -19,6 +19,7 @@ import {
 import { ColorIcon, EmptyKbArt, kbIcon } from "../components/ColorIcon";
 import { CreateKbMenu } from "../components/CreateKbMenu";
 import { IconMore, IconSearch } from "../components/icons";
+import { PageLoading } from "../components/chrome";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
@@ -29,7 +30,7 @@ export function KnowledgeBasesPage() {
   const toast = useToast();
   const [params] = useSearchParams();
   const parentId = params.get("parent") || undefined;
-  const { knowledgeBases, updateKnowledgeBase, removeKnowledgeBase } = useStore();
+  const { knowledgeBases, kbsReady, updateKnowledgeBase, removeKnowledgeBase } = useStore();
   const [q, setQ] = useState("");
   const [edit, setEdit] = useState<KnowledgeBase | null>(null);
   const [editName, setEditName] = useState("");
@@ -47,6 +48,14 @@ export function KnowledgeBasesPage() {
   }, [q, knowledgeBases, parentId]);
 
   const deleting = knowledgeBases.find((k) => k.id === delId);
+
+  if (!kbsReady) {
+    return (
+      <div className="page">
+        <PageLoading label="正在加载知识库" />
+      </div>
+    );
+  }
 
   return (
     <div className="page">

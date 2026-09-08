@@ -67,7 +67,7 @@ export function retrieve(
   const mode = search?.searchMode;
   let ranked: Hit[] = pool
     .map((chunk) => {
-      const base = scoreText(input.query, `${chunk.title} ${chunk.text} ${chunk.sku ?? ""}`);
+      const base = scoreText(input.query, `${chunk.title} ${chunk.text} ${chunk.a ?? ""} ${chunk.sku ?? ""}`);
       const semantic = Math.min(1, base + 0.08);
       const score = mode === "embedding" ? semantic : mode === "fullText" ? base : (base + semantic) / 2;
       const note =

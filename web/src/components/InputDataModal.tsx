@@ -21,6 +21,14 @@ function nid() {
   return `idx_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function indexLabel(type: ChunkIndex["type"]) {
+  if (type === "default") return "默认索引";
+  if (type === "child") return "子块索引";
+  if (type === "auto") return "补充索引";
+  if (type === "image") return "图片索引";
+  return "自定义索引";
+}
+
 function RequiredLabel({ children }: { children: string }) {
   return (
     <Flex align="center" h="20px" fontSize="14px" fontWeight={500} color="myGray.900" flexShrink={0}>
@@ -54,7 +62,7 @@ export function InputDataModal({
   sourceTitle: string;
   chunk?: Chunk;
   onClose: () => void;
-  onSave: (data: { q: string; a: string; indexes: ChunkIndex[] }) => void;
+  onSave: (data: { q: string; a: string; indexes: ChunkIndex[] }) => void | Promise<void>;
 }) {
   const toast = useToast();
   const isInsert = !chunk;
@@ -63,9 +71,16 @@ export function InputDataModal({
   const [a, setA] = useState(chunk?.a ?? "");
   const [indexes, setIndexes] = useState<ChunkIndex[]>(() => {
     if (!chunk) return [];
-    if (chunk.indexes?.length) return chunk.indexes;
+    if (chunk.indexes?.length) {
+      return chunk.indexes.map((item, i) => ({
+        id: item.id || nid(),
+        type: item.type || (i === 0 ? "default" : "custom"),
+        text: item.text || "",
+      }));
+    }
     return [{ id: nid(), type: "default", text: chunk.text }];
   });
+  const [saving, setSaving] = useState(false);
   const [focusId, setFocusId] = useState<string>();
 
   useEffect(() => {
@@ -74,23 +89,29 @@ export function InputDataModal({
     el?.focus();
   }, [focusId]);
 
-  function submit() {
+  async function submit() {
     if (!q.trim() || (tab === "qa" && !a.trim())) {
       toast("请填写必填内容");
       return;
     }
-    const defaultText = tab === "qa" ? `${q.trim()}\n${a.trim()}` : q.trim();
-    const custom = indexes.filter((item) => item.type === "custom" && item.text.trim());
-    const restDefault = indexes.filter((item) => item.type === "default");
-    const nextIndexes: ChunkIndex[] = [
-      ...custom,
-      restDefault[0]
-        ? { ...restDefault[0], text: defaultText }
-        : { id: nid(), type: "default", text: defaultText },
-    ];
+    const nextIndexes = indexes
+      .map((item) => ({ ...item, text: item.text.trim() }))
+      .filter((item) => item.text);
+    const hasSearchIndex = nextIndexes.some((item) => item.type === "default" || item.type === "child");
+    if (!hasSearchIndex) {
+      const fallback = tab === "qa" ? `${q.trim()}\n${a.trim()}` : q.trim();
+      nextIndexes.push({ id: nid(), type: "default", text: fallback });
+    }
     setIndexes(nextIndexes);
-    onSave({ q: q.trim(), a: tab === "qa" ? a.trim() : "", indexes: nextIndexes });
-    toast(isInsert ? "导入数据成功" : "更新数据成功");
+    setSaving(true);
+    try {
+      await onSave({ q: q.trim(), a: tab === "qa" ? a.trim() : "", indexes: nextIndexes });
+      toast(isInsert ? "导入数据成功" : "更新数据成功");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "更新失败");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -185,9 +206,10 @@ export function InputDataModal({
                   lineHeight="16px"
                   fontWeight={500}
                   letterSpacing="0.5px"
+                  isLoading={saving}
                   _hover={{ bg: "myGray.200" }}
                   rightIcon={<IconRightArrow />}
-                  onClick={submit}
+                  onClick={() => void submit()}
                 >
                   更新索引
                 </Button>
@@ -233,9 +255,9 @@ export function InputDataModal({
                       >
                         <Flex mb="8px" align="center" h="24px">
                           <Box flex="1" color="myGray.900" fontSize="14px" lineHeight="20px" fontWeight={500}>
-                            {item.type === "default" ? "默认索引" : "自定义索引"}
+                            {indexLabel(item.type)}
                           </Box>
-                          {item.type === "custom" && (
+                          {item.type !== "default" && (
                             <Box
                               display="none"
                               _groupHover={{ display: "block" }}
@@ -248,37 +270,31 @@ export function InputDataModal({
                             </Box>
                           )}
                         </Flex>
-                        {item.type === "default" ? (
-                          <Box fontSize="sm" color="myGray.600" whiteSpace="pre-wrap">
-                            {item.text}
-                          </Box>
-                        ) : (
-                          <Textarea
-                            data-index-id={item.id}
-                            maxLength={2000}
-                            borderColor="transparent"
-                            minH="40px"
-                            px={0}
-                            pt={0}
-                            resize="none"
-                            fontSize="sm"
-                            color="myGray.500"
-                            placeholder="输入索引文本内容"
-                            value={item.text}
-                            onChange={(e) =>
-                              setIndexes((prev) =>
-                                prev.map((x) => (x.id === item.id ? { ...x, text: e.target.value } : x)),
-                              )
-                            }
-                            _focus={{
-                              px: 3,
-                              py: 1,
-                              borderColor: "primary.500",
-                              boxShadow: "0px 0px 0px 2.4px rgba(51, 112, 255, 0.15)",
-                              bg: "white",
-                            }}
-                          />
-                        )}
+                        <Textarea
+                          data-index-id={item.id}
+                          maxLength={2000}
+                          borderColor="transparent"
+                          minH="40px"
+                          px={0}
+                          pt={0}
+                          resize="none"
+                          fontSize="sm"
+                          color="myGray.500"
+                          placeholder="输入索引文本内容"
+                          value={item.text}
+                          onChange={(e) =>
+                            setIndexes((prev) =>
+                              prev.map((x) => (x.id === item.id ? { ...x, text: e.target.value } : x)),
+                            )
+                          }
+                          _focus={{
+                            px: 3,
+                            py: 1,
+                            borderColor: "primary.500",
+                            boxShadow: "0px 0px 0px 2.4px rgba(51, 112, 255, 0.15)",
+                            bg: "white",
+                          }}
+                        />
                       </Box>
                     ))}
                   </Flex>

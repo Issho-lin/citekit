@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -13,7 +13,7 @@ import {
   useDisclosure,
 } from "@chakra-ui/react";
 import { ColorIcon } from "../components/ColorIcon";
-import { Empty } from "../components/chrome";
+import { Empty, PageLoading, goBack } from "../components/chrome";
 import {
   IconFileCollection,
   IconFolderImport,
@@ -21,6 +21,7 @@ import {
   IconList,
   IconManualCollection,
   IconSearch,
+  IconEdit,
 } from "../components/icons";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { KbInfoPanel } from "../components/KbInfoPanel";
@@ -91,13 +92,14 @@ export function KbDetailPage() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") === "test" ? "test" : "collection";
   const colParent = params.get("parent") || undefined;
-  const { knowledgeBases, kbsReady, sources, chunks, removeSource, addSource } = useStore();
+  const { knowledgeBases, kbsReady, sources, chunks, removeSource, addSource, updateSource } = useStore();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [prompt, setPrompt] = useState<{ name: string } | null>(null);
   const [websiteOpen, setWebsiteOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const batchDel = useDisclosure();
 
   const kbSources = sources.filter((s) => s.kbId === kbId && (s.parentId || undefined) === colParent);
@@ -118,7 +120,7 @@ export function KbDetailPage() {
   if (!kbsReady) {
     return (
       <div className="page">
-        <p className="page-desc">加载中…</p>
+        <PageLoading label="正在打开知识库" />
       </div>
     );
   }
@@ -141,13 +143,29 @@ export function KbDetailPage() {
     nav(`/kb/${kbId}/import?source=${source}${colParent ? `&parent=${colParent}` : ""}`);
   }
 
+  async function saveRename() {
+    if (!renaming) return;
+    const name = renaming.name.trim();
+    if (!name) {
+      toast("请填写名称");
+      return;
+    }
+    try {
+      await updateSource(renaming.id, { title: name });
+      toast("已修改");
+      setRenaming(null);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "修改失败");
+    }
+  }
+
   const allIds = shown.map((s) => s.id);
   const allOn = allIds.length > 0 && allIds.every((id) => picked.includes(id));
 
   return (
     <div className="kb-page">
       <div className="kb-navbar">
-        <button type="button" className="kb-back-round" onClick={() => nav("/kb")} aria-label="返回">
+        <button type="button" className="kb-back-round" onClick={() => goBack(nav, "/kb")} aria-label="返回">
           ←
         </button>
         <div className="kb-navbar-name">{kb.name}</div>
@@ -309,6 +327,17 @@ export function KbDetailPage() {
                                 <div>{s.title}</div>
                                 <div className="mono">{SOURCE_LABEL[s.type]}</div>
                               </div>
+                              <button
+                                type="button"
+                                className="kb-info-edit"
+                                aria-label="修改名称"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRenaming({ id: s.id, name: s.title });
+                                }}
+                              >
+                                <IconEdit />
+                              </button>
                             </div>
                           </td>
                           <td className="mono">{s.updatedAt}</td>
@@ -342,7 +371,11 @@ export function KbDetailPage() {
             </>
           )}
           {tab === "test" && (
-            <KbSearchTest kbId={kb.id} />
+            <KbSearchTest
+              key={params.get("source") || "all"}
+              kbId={kb.id}
+              onlySourceId={params.get("source") || undefined}
+            />
           )}
         </div>
         <KbInfoPanel kb={kb} />
@@ -358,6 +391,30 @@ export function KbDetailPage() {
             goImport(source);
           }}
         />
+      )}
+
+      {renaming && (
+        <div className="fg-modal-root">
+          <button type="button" className="create-mask" onClick={() => setRenaming(null)} aria-label="关闭" />
+          <div className="fg-modal">
+            <h3>修改名称</h3>
+            <Input
+              autoFocus
+              value={renaming.name}
+              onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+              placeholder="数据集名称"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveRename();
+              }}
+            />
+            <div className="modal-actions">
+              <Button variant="outline" colorScheme="gray" onClick={() => setRenaming(null)}>
+                取消
+              </Button>
+              <Button onClick={() => void saveRename()}>保存</Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {prompt && (
@@ -420,7 +477,7 @@ export function KbDetailPage() {
   );
 }
 
-function KbSearchTest({ kbId }: { kbId: string }) {
+function KbSearchTest({ kbId, onlySourceId }: { kbId: string; onlySourceId?: string }) {
   const { knowledgeBases, sources, chunks, updateKnowledgeBase } = useStore();
   const kb = knowledgeBases.find((k) => k.id === kbId);
   const collections = useMemo(
@@ -428,16 +485,21 @@ function KbSearchTest({ kbId }: { kbId: string }) {
     [sources, kbId],
   );
   const allIds = collections.map((s) => s.id);
-  const [picked, setPicked] = useState<string[]>(allIds);
+  const [picked, setPicked] = useState<string[]>(onlySourceId ? [onlySourceId] : allIds);
+  const scoped = useRef(Boolean(onlySourceId));
 
   useEffect(() => {
     const ids = collections.map((s) => s.id);
     setPicked((prev) => {
+      if (scoped.current && onlySourceId && ids.includes(onlySourceId)) {
+        const keep = prev.filter((id) => ids.includes(id));
+        return keep.length ? keep : [onlySourceId];
+      }
       const keep = prev.filter((id) => ids.includes(id));
       const added = ids.filter((id) => !prev.includes(id));
       return [...keep, ...added];
     });
-  }, [collections]);
+  }, [collections, onlySourceId]);
 
   if (!kb) return null;
 
@@ -449,7 +511,7 @@ function KbSearchTest({ kbId }: { kbId: string }) {
         这里只试搜语料，不决定 Agent 怎么搜。做成工具时会拷一份当时的参数。勾选只用于本次测试，不会保存。
       </p>
       <div className="field" style={{ marginBottom: 16 }}>
-        <span>数据集（默认全选）</span>
+        <span>{onlySourceId ? "数据集" : "数据集（默认全选）"}</span>
         {collections.length === 0 ? (
           <p className="page-desc">还没有数据集。</p>
         ) : (

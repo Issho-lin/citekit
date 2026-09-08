@@ -35,6 +35,8 @@ const PARENT_CHUNK_MAX_TIP =
   "父块上限：优先按标题切段，某一段仍超过该长度时再切开。切开后的每块完整入库，命中后给模型阅读。建议大于「索引大小」。";
 const CHILD_INDEX_TIP =
   "子块：把每个父块再按该长度切开并向量化，用来检索。搜中子块后返回对应的整段父块。一般应小于或等于分块大小。";
+const PARAGRAPH_DEPTH_TIP =
+  "按标题切时，切到第几级为止。1 只切最粗的标题（标题 1、第 X 章），2 再切标题 2 / 第 X 节，3 再切标题 3 / 第 X 条。默认 5 表示一到五级都切。更深的标题不单独断开，留在上一级下面。";
 
 export function DataProcess({
   process: processProp,
@@ -222,7 +224,7 @@ function SplitModeGroup({
     {
       title: "按段落分块",
       value: "paragraph",
-      tooltip: "优先按 Markdown 标题段落进行分块，如果分块过长，再按长度进行二次分块",
+      tooltip: "优先按标题分块（Markdown、Word 标题、章节条款等），某一段过长时再按长度切开",
     },
     { title: "按长度分块", value: "size" },
     {
@@ -340,6 +342,16 @@ function CheckLabel({ children }: { children: ReactNode }) {
       {children}
     </Box>
   );
+}
+
+function triggerRuleText(value: ProcessConfig) {
+  if (value.chunkTriggerType === "forceChunk") {
+    return "无论原文多短都会切开，再按下面的规则分段。";
+  }
+  if (value.chunkTriggerType === "maxSize") {
+    return "仅当原文超过文本理解模型最大上下文的 70% 时才切开；否则整篇存成一块。";
+  }
+  return `仅当原文超过 ${value.chunkTriggerMinSize} 字时才切开；不够长就整篇存成一块。`;
 }
 
 function SectionLabel({ children }: { children: ReactNode }) {
@@ -476,7 +488,25 @@ function ChunkSettings({
             desc="使用系统默认的参数和规则"
             py={3}
             onSelect={() => patch({ chunkSettingMode: "auto" })}
-          />
+          >
+            {value.chunkSettingMode === "auto" ? (
+              <Box fontSize="xs" color="myGray.600" lineHeight={1.75}>
+                <Box>1. {triggerRuleText(value)}</Box>
+                <Box mt={1.5}>
+                  2. 决定切开后：文中若能识别到标题（Markdown、Word 标题样式、第X章/节/条等，默认一到五级），就在每个标题处断开，标题和它下面的正文算一段。
+                </Box>
+                <Box mt={1.5}>
+                  3. 若没有这类标题：按空行分段；如果全文仍只有一段，再按换行切。
+                </Box>
+                <Box mt={1.5}>
+                  4. 相邻的短段会拼在一起，每块尽量接近 1000 字。某一段本身超过 1000 字时，再按 1000 字切开。块与块之间不重复带上一段文字。
+                </Box>
+                <Box mt={1.5}>
+                  5. 检索和给模型阅读的是同一段完整文字，不会再切更短的检索片段，也不会调用模型来识别段落。
+                </Box>
+              </Box>
+            ) : null}
+          </LeftRadioCard>
           <LeftRadioCard
             selected={value.chunkSettingMode === "custom"}
             title="自定义"
@@ -507,7 +537,7 @@ function ChunkSettings({
                           {
                             value: "auto",
                             label: "自动",
-                            description: "当文本内容不含 Markdown 标题时，启用模型识别。",
+                            description: "当文本里识别不到标题时，才启用模型识别。",
                           },
                           {
                             value: "forbid",
@@ -523,7 +553,7 @@ function ChunkSettings({
                       />
                     </Box>
                     <Box mt={2} fontSize="sm">
-                      <Box mb={1}>最大段落深度</Box>
+                      <FieldLabel tip={PARAGRAPH_DEPTH_TIP}>最大段落深度</FieldLabel>
                       <IntInput
                         min={1}
                         max={8}

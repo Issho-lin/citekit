@@ -52,6 +52,19 @@ def delete_source_points(kb_id: str, source_id: str) -> None:
     )
 
 
+def delete_chunk_points(kb_id: str, chunk_id: str) -> None:
+    name = collection_name(kb_id)
+    q = client()
+    if not q.collection_exists(name):
+        return
+    q.delete(
+        collection_name=name,
+        points_selector=FilterSelector(
+            filter=Filter(must=[FieldCondition(key="chunk_id", match=MatchValue(value=chunk_id))])
+        ),
+    )
+
+
 def delete_points(kb_id: str, ids: list[str]) -> None:
     if not ids:
         return

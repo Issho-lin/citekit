@@ -1,11 +1,24 @@
 import { Box, Button, Flex, HStack } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import type { ProcessConfig } from "../types";
 import { useDatasetImport } from "./Context";
 import type { ImportSourceItemType } from "./types";
 
 type PreviewResult = Awaited<ReturnType<typeof api.previewKb>>;
 type Tab = "chunks" | "parsed";
+
+function needsModel(process: ProcessConfig) {
+  return (
+    process.pdfEnhance ||
+    process.trainingType === "qa" ||
+    process.autoIndexes ||
+    process.imageIndex ||
+    (process.chunkSettingMode === "custom" &&
+      process.chunkSplitMode === "paragraph" &&
+      process.paragraphChunkAIMode !== "forbid")
+  );
+}
 
 export function PreviewData() {
   const { goToNext, sources, process, kbId } = useDatasetImport();
@@ -21,6 +34,9 @@ export function PreviewData() {
     }
   }, [sources, previewFile]);
 
+  const processKey = JSON.stringify(process);
+  const fileKey = `${previewFile?.id ?? ""}:${previewFile?.dbFileId ?? ""}:${previewFile?.rawText ?? ""}`;
+
   useEffect(() => {
     if (!previewFile) {
       setResult(null);
@@ -28,6 +44,7 @@ export function PreviewData() {
       return;
     }
     let cancelled = false;
+    setResult(null);
     setLoading(true);
     setError("");
     void api
@@ -51,7 +68,7 @@ export function PreviewData() {
     return () => {
       cancelled = true;
     };
-  }, [previewFile, kbId, process]);
+  }, [fileKey, kbId, processKey, process]);
 
   const total = result?.total ?? 0;
   const shown = result?.shown ?? result?.chunks.length ?? 0;
@@ -144,9 +161,7 @@ export function PreviewData() {
                 {error}
               </Box>
             ) : loading ? (
-              <Box fontSize="sm" color="myGray.500">
-                解析中…
-              </Box>
+              <PreviewBusy usingModel={needsModel(process)} />
             ) : previewFile && result ? (
               <>
                 <Box fontSize="sm" color="myGray.700" mb={2}>
@@ -160,6 +175,7 @@ export function PreviewData() {
                       最短 {result.minChars} · 平均 {result.avgChars} · 最长 {result.maxChars}
                     </StatChip>
                   ) : null}
+                  {result.indexCount > 0 ? <StatChip>{result.indexCount} 条额外索引</StatChip> : null}
                   <StatChip warn={result.oversize > 0}>
                     {result.oversize > 0
                       ? `${result.oversize} 块超过 ${result.chunkSize} 字`
@@ -227,6 +243,26 @@ export function PreviewData() {
                         <Box fontSize="sm" color="myGray.600" whiteSpace="pre-wrap" wordBreak="break-word">
                           {item.text}
                         </Box>
+                        {item.answer ? (
+                          <Box mt={2} fontSize="xs" color="myGray.500" whiteSpace="pre-wrap">
+                            答：{item.answer}
+                          </Box>
+                        ) : null}
+                        {(item.indexes || []).length > 0 ? (
+                          <Box mt={2} fontSize="xs" color="myGray.400" lineHeight={1.7}>
+                            {(item.indexes || []).map((idx, i) => (
+                              <Box key={i}>
+                                {(idx.type === "child"
+                                  ? "子块"
+                                  : idx.type === "auto"
+                                    ? "补充"
+                                    : idx.type === "image"
+                                      ? "图片"
+                                      : "索引") + ` · ${idx.text.slice(0, 80)}${idx.text.length > 80 ? "…" : ""}`}
+                              </Box>
+                            ))}
+                          </Box>
+                        ) : null}
                       </Box>
                     ))}
                   </>
@@ -244,6 +280,29 @@ export function PreviewData() {
         <Button onClick={goToNext}>下一步</Button>
       </Flex>
     </Flex>
+  );
+}
+
+function PreviewBusy({ usingModel }: { usingModel: boolean }) {
+  return (
+    <div className="preview-busy" role="status" aria-live="polite">
+      <div className="preview-busy-art" aria-hidden="true">
+        <div className="preview-busy-sheet">
+          <span />
+          <span />
+          <span />
+          <span />
+        </div>
+        <div className="preview-busy-scan" />
+      </div>
+      <div className="preview-busy-slices" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="preview-busy-title">{usingModel ? "正在处理" : "正在解析"}</div>
+      <div className="preview-busy-desc">{usingModel ? "可能调用模型，请稍候" : "按当前规则生成分块预览"}</div>
+    </div>
   );
 }
 

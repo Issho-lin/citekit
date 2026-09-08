@@ -124,6 +124,8 @@ def source_to_out(row: SourceRow) -> SourceOut:
         updatedAt=row.updated_at,
         chunkCount=row.chunk_count,
         **data,
+        fileId=row.file_id,
+        hasOriginal=bool(row.file_id or (row.raw_text or "").strip()),
     )
 
 
@@ -135,6 +137,8 @@ def chunk_to_out(row: ChunkRow) -> ChunkOut:
         title=row.title,
         text=row.text,
         locator=row.locator,
+        a=row.answer,
+        indexes=row.indexes,
     )
 
 

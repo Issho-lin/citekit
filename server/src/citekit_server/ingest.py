@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
 
 from qdrant_client.http.models import PointStruct
 from sqlalchemy.orm import Session
 
 from citekit_server.call_log import call_scope
-from citekit_server.chunking import describe_process, process_size, split_text, unused_notes
-from citekit_server.config import settings
+from citekit_server.chunking import process_size
 from citekit_server.db import (
     AiModelRow,
     ChunkRow,
@@ -18,11 +16,12 @@ from citekit_server.db import (
     UploadedFileRow,
 )
 from citekit_server.ids import new_uuid
-from citekit_server.parse import extract_text
+from citekit_server.process_doc import Unit, ProcessResult, embed_items, run_process
 from citekit_server.schemas import PreviewChunk, PreviewOut, ProcessConfigIn
+from citekit_server.storage import as_local_path
 from citekit_server.upstream import embed_texts
-from citekit_server.vectors import delete_source_points, upsert_points
-from citekit_server.workspace_logic import ensure_workspace
+from citekit_server.vectors import delete_chunk_points, delete_source_points, upsert_points
+from citekit_server.workspace_logic import ensure_workspace, pick_active
 
 
 def now_stamp() -> str:
@@ -47,8 +46,7 @@ def resolve_auth(db: Session, model: AiModelRow) -> str:
 
 
 def embedding_model(db: Session, kb: KnowledgeBaseRow) -> AiModelRow:
-    model_id = (kb.vector_model or "").strip() or ensure_workspace(db).vector_model
-    row = db.get(AiModelRow, model_id) if model_id else None
+    row = _model_by_slot(db, kb, "vector")
     if row and row.type == "embedding":
         return row
     fallback = (
@@ -61,54 +59,139 @@ def embedding_model(db: Session, kb: KnowledgeBaseRow) -> AiModelRow:
     return fallback
 
 
-def source_text(db: Session, source: SourceRow) -> str:
-    if (source.raw_text or "").strip():
-        return source.raw_text or ""
+def chat_model(db: Session, kb: KnowledgeBaseRow) -> AiModelRow | None:
+    row = _model_by_slot(db, kb, "llm")
+    if row and row.type in {"llm", "vlm"}:
+        return row
+    return (
+        db.query(AiModelRow)
+        .filter(AiModelRow.type == "llm", AiModelRow.is_active.is_(True))
+        .first()
+    )
+
+
+def vision_model(db: Session, kb: KnowledgeBaseRow) -> AiModelRow | None:
+    row = _model_by_slot(db, kb, "vlm")
+    if row and (row.vision or row.type == "vlm"):
+        return row
+    llm = chat_model(db, kb)
+    if llm and llm.vision:
+        return llm
+    return (
+        db.query(AiModelRow)
+        .filter(AiModelRow.is_active.is_(True), AiModelRow.vision.is_(True))
+        .first()
+    )
+
+
+def _model_by_slot(db: Session, kb: KnowledgeBaseRow, slot: str) -> AiModelRow | None:
+    ws = ensure_workspace(db)
+    labels = {"llm": "文本理解", "vector": "索引", "vlm": "图片理解", "rerank": "重排"}
+    mapping = {
+        "llm": (kb.llm_model, ws.llm_model),
+        "vector": (kb.vector_model, ws.vector_model),
+        "vlm": (kb.vlm_model, ws.vlm_model),
+        "rerank": (kb.rerank_model, ws.rerank_model),
+    }
+    kb_id, ws_id = mapping[slot]
+    label = labels[slot]
+    if (kb_id or "").strip():
+        row = db.get(AiModelRow, kb_id.strip())
+        if row and row.is_active:
+            return row
+        if row:
+            raise RuntimeError(f"知识库选用的{label}模型「{kb_id}」已停用，请在设置中启用或改选。")
+        raise RuntimeError(
+            f"知识库选用的{label}模型「{kb_id}」不在模型列表里。"
+            "请到设置添加该模型，或在知识库信息里改选一个已有模型。"
+        )
+    if (ws_id or "").strip():
+        row = db.get(AiModelRow, ws_id.strip())
+        if row and row.is_active:
+            return row
+    picked = pick_active(
+        db,
+        "vlm" if slot == "vlm" else "llm" if slot == "llm" else "embedding" if slot == "vector" else "rerank",
+    )
+    return db.get(AiModelRow, picked) if picked else None
+
+
+def _pair(db: Session, model: AiModelRow | None) -> tuple[AiModelRow, str] | None:
+    if not model:
+        return None
+    return model, resolve_auth(db, model)
+
+
+def source_file(db: Session, source: SourceRow) -> tuple[str, str | None, str]:
+    raw = (source.raw_text or "").strip()
     if not source.file_id:
-        return ""
+        return raw, None, source.title
     uploaded = db.get(UploadedFileRow, source.file_id)
     if not uploaded:
         raise RuntimeError("文件不存在")
-    return extract_text(uploaded.path, uploaded.name)
+    return raw, uploaded.path, uploaded.name
 
 
 PARSED_PREVIEW = 24_000
 CHUNK_PREVIEW = 50
 
 
-def build_preview(
+def build_preview_from_kb(
+    db: Session,
+    kb: KnowledgeBaseRow,
+    *,
     text: str,
-    process: ProcessConfigIn | None,
+    file_path: str | None,
+    filename: str,
     title: str,
-    filename: str = "",
+    process: ProcessConfigIn | None,
 ) -> PreviewOut:
-    body = (text or "").strip()
     cfg = process or ProcessConfigIn()
-    size, _overlap = process_size(cfg)
-    parts = split_text(body, cfg)
-    lengths = [len(part) for part in parts]
+    llm = chat_model(db, kb)
+    vlm = vision_model(db, kb)
+    result = run_process(
+        cfg=cfg,
+        title=title,
+        filename=filename,
+        raw_text=text,
+        file_path=file_path,
+        preview=True,
+        llm=_pair(db, llm),
+        vlm=_pair(db, vlm),
+        llm_max_context=llm.max_context if llm else None,
+    )
+    return _preview_out(result, cfg, title)
+
+
+def _preview_out(result: ProcessResult, cfg: ProcessConfigIn, title: str) -> PreviewOut:
+    size, _ = process_size(cfg)
+    units = result.units[:CHUNK_PREVIEW]
+    lengths = [len(unit.text) + len(unit.answer) for unit in result.units]
     chunks = [
         PreviewChunk(
-            title=part.split("\n", 1)[0][:40] or f"{title} · 块 {index}",
-            text=part,
-            chars=len(part),
+            title=unit.title or f"{title} · 块 {index}",
+            text=unit.text,
+            chars=len(unit.text),
+            answer=unit.answer,
+            indexes=unit.indexes,
         )
-        for index, part in enumerate(parts[:CHUNK_PREVIEW], start=1)
+        for index, unit in enumerate(units, start=1)
     ]
     return PreviewOut(
         chunks=chunks,
-        total=len(parts),
+        total=len(result.units),
         shown=len(chunks),
-        parsedText=body[:PARSED_PREVIEW],
-        parsedTruncated=len(body) > PARSED_PREVIEW,
-        parsedChars=len(body),
-        applied=describe_process(cfg),
-        notes=unused_notes(cfg, filename=filename or title, parsed_chars=len(body)),
+        parsedText=result.parsed_text[:PARSED_PREVIEW],
+        parsedTruncated=len(result.parsed_text) > PARSED_PREVIEW,
+        parsedChars=len(result.parsed_text),
+        applied=result.applied,
+        notes=result.notes,
         minChars=min(lengths) if lengths else 0,
         maxChars=max(lengths) if lengths else 0,
         avgChars=round(sum(lengths) / len(lengths)) if lengths else 0,
         oversize=sum(1 for n in lengths if n > size),
         chunkSize=size,
+        indexCount=sum(len(unit.indexes) for unit in result.units),
     )
 
 
@@ -126,56 +209,89 @@ def ingest_source(source_id: str) -> None:
         source.updated_at = now_stamp()
         db.commit()
 
-        text = source_text(db, source)
-        parts = split_text(text, process_of(source))
-        if not parts:
-            raise RuntimeError("没有解析出文本，无法入库")
+        cfg = process_of(source)
+        raw, stored, filename = source_file(db, source)
+        llm = chat_model(db, kb)
+        vlm = vision_model(db, kb)
+        with as_local_path(stored, filename) as path:
+            with call_scope(purpose="ingest", kb_id=kb.id, source_id=source.id):
+                result = run_process(
+                    cfg=cfg,
+                    title=source.title,
+                    filename=filename,
+                    raw_text=raw,
+                    file_path=path,
+                    preview=False,
+                    llm=_pair(db, llm),
+                    vlm=_pair(db, vlm),
+                    llm_max_context=llm.max_context if llm else None,
+                )
+        if not result.units:
+            raise RuntimeError("没有解析出可入库内容")
 
         model = embedding_model(db, kb)
+        auth = resolve_auth(db, model)
+        texts: list[str] = []
+        meta: list[tuple[str, str]] = []
+        units_with_id: list[tuple[str, Unit]] = []
+        titles: dict[str, str] = {}
+        bodies: dict[str, str] = {}
+        for unit in result.units:
+            chunk_id = new_uuid()
+            units_with_id.append((chunk_id, unit))
+            titles[chunk_id] = unit.title
+            bodies[chunk_id] = unit.text
+            for kind, text in embed_items(unit, source.title, cfg.indexPrefixTitle):
+                texts.append(text)
+                meta.append((chunk_id, kind))
+
+        if not texts:
+            raise RuntimeError("没有可向量化的文本")
+
         with call_scope(purpose="ingest", kb_id=kb.id, source_id=source.id):
-            vectors = embed_texts(model, resolve_auth(db, model), parts)
+            vectors = embed_texts(model, auth, texts)
         dim = len(vectors[0])
 
-        old_ids = [row.id for row in db.query(ChunkRow).filter(ChunkRow.source_id == source.id).all()]
         db.query(ChunkRow).filter(ChunkRow.source_id == source.id).delete()
         delete_source_points(kb.id, source.id)
 
         points: list[PointStruct] = []
-        for index, (part, vector) in enumerate(zip(parts, vectors, strict=True), start=1):
-            chunk_id = new_uuid()
-            title = part.split("\n", 1)[0][:80] or f"{source.title} · 块 {index}"
+        for index, (chunk_id, unit) in enumerate(units_with_id, start=1):
             locator = f"{source.locator or source.title} #{index}"
             db.add(
                 ChunkRow(
                     id=chunk_id,
                     kb_id=kb.id,
                     source_id=source.id,
-                    title=title,
-                    text=part,
+                    title=unit.title[:255],
+                    text=unit.text,
                     locator=locator,
                     position=index,
+                    answer=unit.answer or None,
+                    indexes=unit.indexes or None,
                 )
             )
+        for (chunk_id, kind), vector in zip(meta, vectors, strict=True):
             points.append(
                 PointStruct(
-                    id=chunk_id,
+                    id=new_uuid(),
                     vector=vector,
                     payload={
                         "kb_id": kb.id,
                         "source_id": source.id,
                         "chunk_id": chunk_id,
-                        "title": title,
-                        "text": part,
+                        "index_type": kind,
+                        "title": titles[chunk_id],
+                        "text": bodies[chunk_id],
                     },
                 )
             )
         upsert_points(kb.id, dim, points)
-        source.chunk_count = len(parts)
+        source.chunk_count = len(result.units)
         source.status = "synced"
         source.error_message = None
         source.updated_at = now_stamp()
         db.commit()
-        _ = old_ids
     except Exception as exc:
         db.rollback()
         source = db.get(SourceRow, source_id)
@@ -188,7 +304,40 @@ def ingest_source(source_id: str) -> None:
         db.close()
 
 
-def uploads_dir(kb_id: str) -> Path:
-    path = settings.data_dir / "uploads" / kb_id
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+def reindex_chunk(db: Session, row: ChunkRow) -> None:
+    source = db.get(SourceRow, row.source_id)
+    kb = db.get(KnowledgeBaseRow, row.kb_id)
+    if not source or not kb:
+        raise RuntimeError("数据集或知识库不存在")
+    cfg = process_of(source)
+    unit = Unit(
+        title=row.title,
+        text=row.text,
+        answer=row.answer or "",
+        indexes=list(row.indexes or []),
+    )
+    items = embed_items(unit, source.title, cfg.indexPrefixTitle)
+    delete_chunk_points(kb.id, row.id)
+    if not items:
+        return
+    model = embedding_model(db, kb)
+    auth = resolve_auth(db, model)
+    texts = [text for _, text in items]
+    with call_scope(purpose="ingest", kb_id=kb.id, source_id=source.id):
+        vectors = embed_texts(model, auth, texts)
+    points = [
+        PointStruct(
+            id=new_uuid(),
+            vector=vector,
+            payload={
+                "kb_id": kb.id,
+                "source_id": source.id,
+                "chunk_id": row.id,
+                "index_type": kind,
+                "title": row.title,
+                "text": row.text,
+            },
+        )
+        for (kind, _), vector in zip(items, vectors, strict=True)
+    ]
+    upsert_points(kb.id, len(vectors[0]), points)

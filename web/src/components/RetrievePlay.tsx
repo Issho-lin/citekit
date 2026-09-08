@@ -214,7 +214,20 @@ export function RetrievePlay({
                 <strong>{h.chunk.title}</strong>
                 <span className="tag">{h.score.toFixed(2)}</span>
               </div>
-              <p>{h.chunk.text}</p>
+              {h.chunk.a ? (
+                <>
+                  <p>
+                    <span className="hit-card-qa">问：</span>
+                    {h.chunk.text}
+                  </p>
+                  <p className="hit-card-answer">
+                    <span className="hit-card-qa">答：</span>
+                    {h.chunk.a}
+                  </p>
+                </>
+              ) : (
+                <p>{h.chunk.text}</p>
+              )}
               <div className="hit-card-meta">
                 {h.chunk.locator} · {h.note}
               </div>

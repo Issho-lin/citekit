@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     database_url: str = "mysql+pymysql://citekit:citekit@127.0.0.1:3306/citekit?charset=utf8mb4"
     qdrant_url: str = "http://127.0.0.1:6333"
     data_dir: Path = _SERVER_DIR / "data"
+    minio_endpoint: str = "127.0.0.1:9000"
+    minio_access_key: str = "citekit"
+    minio_secret_key: str = "citekitsecret"
+    minio_bucket: str = "citekit"
+    minio_secure: bool = False
 
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]

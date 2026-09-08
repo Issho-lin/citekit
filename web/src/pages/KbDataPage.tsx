@@ -18,8 +18,8 @@ import { InputDataModal } from "../components/InputDataModal";
 import { CollectionMetaCard } from "../components/CollectionMetaCard";
 import { ColorIcon } from "../components/ColorIcon";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Empty } from "../components/chrome";
-import { IconList, IconMaximize, IconSearch, IconTextT, IconTrash } from "../components/icons";
+import { Empty, PageLoading, goBack } from "../components/chrome";
+import { IconList, IconMaximize, IconSearch, IconTextT, IconTrash, IconEdit } from "../components/icons";
 import { TrainingStatesModal } from "../components/TrainingStatesModal";
 import { DataProcess } from "../import/DataProcess";
 import { fillProcess } from "../constants";
@@ -89,6 +89,8 @@ export function KbDataPage() {
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | "new" | null>(null);
   const [draftProcess, setDraftProcess] = useState<ProcessConfig | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameName, setRenameName] = useState("");
 
   useEffect(() => {
     if (!sourceId) return;
@@ -104,12 +106,12 @@ export function KbDataPage() {
     );
   }, [rows, search]);
 
-  const indexAmount = rows.length * (process.autoIndexes ? 2 : 1);
+  const indexAmount = rows.reduce((n, c) => n + Math.max(c.indexes?.length || 0, 1), 0);
 
   if (!kbsReady) {
     return (
       <div className="page">
-        <p className="page-desc">加载中…</p>
+        <PageLoading label="正在打开数据集" />
       </div>
     );
   }
@@ -127,6 +129,21 @@ export function KbDataPage() {
     editor.onOpen();
   }
 
+  async function saveRename() {
+    const name = renameName.trim();
+    if (!name) {
+      toast("请填写名称");
+      return;
+    }
+    try {
+      await updateSource(source.id, { title: name });
+      toast("已修改");
+      setRenameOpen(false);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "修改失败");
+    }
+  }
+
   return (
     <div className="kb-page">
       <div className="kb-split data-split">
@@ -141,7 +158,7 @@ export function KbDataPage() {
               fontSize="sm"
               fontWeight={500}
               _hover={{ bg: "myGray.50" }}
-              onClick={() => nav(`/kb/${kb.id}`)}
+              onClick={() => goBack(nav, `/kb/${kb.id}`)}
             >
               <button type="button" className="kb-back-round" aria-label="返回">
                 ←
@@ -158,8 +175,19 @@ export function KbDataPage() {
               <Box className="text-ellipsis" fontSize="md" color="black" fontWeight={500}>
                 {source.title}
               </Box>
+              <button
+                type="button"
+                className="kb-info-edit"
+                aria-label="修改名称"
+                onClick={() => {
+                  setRenameName(source.title);
+                  setRenameOpen(true);
+                }}
+              >
+                <IconEdit />
+              </button>
             </Flex>
-            <Button variant="whitePrimary" onClick={() => nav(`/kb/${kb.id}?tab=test`)}>
+            <Button variant="whitePrimary" onClick={() => nav(`/kb/${kb.id}?tab=test&source=${source.id}`)}>
               试搜
             </Button>
             <Button variant="whitePrimary" onClick={() => exportChunks(source.title, rows)}>
@@ -248,6 +276,7 @@ export function KbDataPage() {
                       </span>
                     </div>
                     <p>{c.text}</p>
+                    {c.a ? <p className="data-chunk-answer">答：{c.a}</p> : null}
                     <div className="data-chunk-foot">
                       <span className="data-chunk-id">ID:{c.id}</span>
                       <IconButton
@@ -308,7 +337,7 @@ export function KbDataPage() {
             editor.onClose();
             setEditingId(null);
           }}
-          onSave={({ q, a, indexes }) => {
+          onSave={async ({ q, a, indexes }) => {
             if (editingId === "new") {
               const id = insertChunk(source.id, {
                 title: q.slice(0, 24) || "手动插入",
@@ -320,11 +349,35 @@ export function KbDataPage() {
               return;
             }
             if (editingId) {
-              updateChunk(editingId, { text: q, a, indexes, title: q.slice(0, 24) || "手动插入" });
+              await updateChunk(editingId, { text: q, a, indexes, title: q.slice(0, 24) || "手动插入" });
             }
           }}
         />
       )}
+
+      <Modal isOpen={renameOpen} onClose={() => setRenameOpen(false)} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>修改名称</ModalHeader>
+          <ModalBody>
+            <Input
+              autoFocus
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
+              placeholder="数据集名称"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveRename();
+              }}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="whiteBase" mr={3} onClick={() => setRenameOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={() => void saveRename()}>保存</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal isOpen={retrain.isOpen} onClose={retrain.onClose} size="xl" scrollBehavior="inside">
         <ModalOverlay />

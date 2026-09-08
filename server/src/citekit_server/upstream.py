@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any
 
@@ -232,19 +233,52 @@ async def test_model(model: AiModelRow, api_key: str = "") -> TestOut:
 
 
 def _upstream_error(status: int, text: str) -> str | None:
+    code, msg = _error_fields(text)
+    combined = f"{code} {msg}".lower()
+    missing = (
+        "notfound" in combined.replace("_", "").replace(".", "")
+        or "does not exist" in combined
+        or "invalidendpoint" in combined.replace(".", "")
+    )
+    if missing:
+        who = _quoted_model(msg) or ""
+        hint = (
+            f"上游找不到模型{f'「{who}」' if who else ''}。"
+            "方舟请改用控制台仍可用的模型 ID，或在「模型映射」填写接入点（ep- 开头）。"
+        )
+        detail = _trim(msg or text)
+        return f"{hint} {detail}".strip()
+    if msg:
+        if status >= 400:
+            return f"HTTP {status} {_trim(msg)}"
+        if code not in (None, "", "Success"):
+            return _trim(msg)
+        return None
     if status >= 400:
         return f"HTTP {status} {_trim(text)}"
+    return None
+
+
+def _error_fields(text: str) -> tuple[str, str]:
     try:
         body = json.loads(text) if text else None
     except json.JSONDecodeError:
-        return None
+        return "", (text or "").strip()
     if not isinstance(body, dict):
-        return None
-    code = body.get("code")
-    if code in (None, "", "Success"):
-        return None
-    msg = body.get("message") or str(code)
-    return _trim(str(msg))
+        return "", (text or "").strip()
+    err = body.get("error")
+    if isinstance(err, dict):
+        return str(err.get("code") or body.get("code") or ""), str(err.get("message") or err.get("msg") or "")
+    code = str(body.get("code") or "")
+    msg = str(body.get("message") or body.get("msg") or "")
+    if code in (None, "", "Success") and not msg:
+        return "", ""
+    return code, msg
+
+
+def _quoted_model(message: str) -> str:
+    match = re.search(r"(doubao[\w.\-]+|ep-[\w]+|qwen[\w.\-]+)", message or "", re.I)
+    return match.group(1) if match else ""
 
 
 def _trim(text: str, limit: int = 180) -> str:
@@ -372,6 +406,93 @@ def embed_texts(model: AiModelRow, api_key: str, texts: list[str]) -> list[list[
     if len(out) != len(texts):
         raise RuntimeError(f"向量数量不匹配：期望 {len(texts)}，得到 {len(out)}")
     return out
+
+
+def chat_completion(
+    model: AiModelRow,
+    api_key: str,
+    prompt: str,
+    *,
+    images: list[bytes] | None = None,
+    max_tokens: int = 2048,
+    timeout: float = 90.0,
+    thinking: bool = True,
+) -> str:
+    token = (api_key or model.request_auth or "").strip()
+    if not token:
+        raise RuntimeError("请填写 API 密钥，或先在供应商配置里保存密钥")
+    base, proto = _require_base(model)
+    url = _endpoint(base, proto, "chat")
+    content: Any
+    if images:
+        import base64
+
+        parts: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for raw in images:
+            b64 = base64.b64encode(raw).decode("ascii")
+            parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+        content = parts
+    else:
+        content = prompt
+    payload: dict[str, Any] = {
+        "model": _model_id(model),
+        "messages": [{"role": "user", "content": content}],
+        "temperature": 0.1,
+        "max_tokens": max_tokens,
+    }
+    if not thinking:
+        payload["enable_thinking"] = False
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    response = _request_sync(
+        "POST",
+        url,
+        headers=_headers(token),
+        json_body=payload,
+        kind="chat",
+        model=model,
+        timeout=timeout,
+    )
+    err = _upstream_error(response.status_code, response.text)
+    if err:
+        raise RuntimeError(err)
+    try:
+        body = response.json()
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("模型没有返回 JSON") from exc
+    text = _choice_text(body)
+    if not text.strip():
+        raise RuntimeError("模型没有返回内容")
+    return text
+
+
+def _choice_text(body: Any) -> str:
+    if not isinstance(body, dict):
+        return str(body or "")
+    choices = body.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            message = first.get("message") or first.get("delta") or {}
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    bits: list[str] = []
+                    for part in content:
+                        if isinstance(part, str):
+                            bits.append(part)
+                        elif isinstance(part, dict):
+                            bits.append(str(part.get("text") or part.get("content") or ""))
+                    return "".join(bits)
+            if isinstance(first.get("text"), str):
+                return first["text"]
+    output = body.get("output")
+    if isinstance(output, dict) and isinstance(output.get("text"), str):
+        return output["text"]
+    if isinstance(body.get("text"), str):
+        return body["text"]
+    return ""
 
 
 def rerank_texts(model: AiModelRow, api_key: str, query: str, documents: list[str]) -> list[float]:
