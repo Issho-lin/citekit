@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@chakra-ui/react";
 import { IconPlus } from "../components/icons";
 import { ColorIcon } from "../components/ColorIcon";
-import { DataTable, Empty, PageHero, PageLoading, Panel } from "../components/chrome";
+import { DataTable, Empty, PageHero, Panel } from "../components/chrome";
 import { kbNext } from "../mock/pipeline";
 import { useStore } from "../mock/store";
 
@@ -11,11 +11,7 @@ export function WorkbenchPage() {
   const unpublished = tools.filter((t) => !endpoints.some((e) => e.toolIds.includes(t.id)));
 
   if (!kbsReady) {
-    return (
-      <div className="page">
-        <PageLoading />
-      </div>
-    );
+    return <div className="page" aria-busy="true" />;
   }
 
   return (

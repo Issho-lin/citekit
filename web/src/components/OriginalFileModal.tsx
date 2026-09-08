@@ -10,9 +10,9 @@ import {
 } from "@chakra-ui/react";
 import { api } from "../api";
 import type { Source } from "../types";
-import { PageLoading } from "./chrome";
 import { IconDownload } from "./icons";
 import { useToast } from "./Toast";
+import { usePageProgress } from "../progress";
 
 type FileKind = "pdf" | "image" | "docx" | "html" | "text" | "binary";
 
@@ -121,6 +121,7 @@ export function OriginalFileModal({
   const [blob, setBlob] = useState<Blob | null>(null);
   const [objectUrl, setObjectUrl] = useState("");
   const [text, setText] = useState("");
+  usePageProgress(isOpen && loading);
 
   const kind = fileKind(name, mime);
 
@@ -197,7 +198,7 @@ export function OriginalFileModal({
         <ModalCloseButton />
         <ModalBody pb={6}>
           {loading ? (
-            <PageLoading compact label="正在打开原文件" />
+            <div className="file-reader-wait" aria-busy="true" />
           ) : kind === "pdf" && objectUrl ? (
             <iframe className="file-reader-frame" title={name} src={objectUrl} />
           ) : kind === "image" && objectUrl ? (

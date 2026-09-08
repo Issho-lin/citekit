@@ -13,7 +13,7 @@ import {
   useDisclosure,
 } from "@chakra-ui/react";
 import { ColorIcon } from "../components/ColorIcon";
-import { Empty, PageLoading, goBack } from "../components/chrome";
+import { Empty, goBack } from "../components/chrome";
 import {
   IconFileCollection,
   IconFolderImport,
@@ -118,11 +118,7 @@ export function KbDetailPage() {
   }, [parentFolder, sources]);
 
   if (!kbsReady) {
-    return (
-      <div className="page">
-        <PageLoading label="正在打开知识库" />
-      </div>
-    );
+    return <div className="page" aria-busy="true" />;
   }
 
   if (!kb) {

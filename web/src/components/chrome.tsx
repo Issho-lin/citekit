@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Link, type NavigateFunction } from "react-router-dom";
-import { BrandLogo } from "./BrandLogo";
 import { EmptyTipArt } from "./ColorIcon";
 
 export function goBack(nav: NavigateFunction, fallback: string) {
@@ -63,45 +62,6 @@ export function NextBar({
   );
 }
 
-export function PageLoading({
-  label = "正在加载",
-  hint = "请稍候",
-  compact = false,
-}: {
-  label?: string;
-  hint?: string;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={compact ? "page-loading compact" : "page-loading"}
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-    >
-      <div className="page-loading-mark" aria-hidden>
-        <span className="page-loading-halo" />
-        <span className="page-loading-orbit" />
-        <span className="page-loading-logo">
-          <BrandLogo size={compact ? 28 : 36} />
-        </span>
-      </div>
-      {compact ? null : (
-        <div className="page-loading-skel" aria-hidden>
-          <span className="page-loading-skel-title" />
-          <div className="page-loading-skel-cards">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-      )}
-      <p className="page-loading-title">{label}</p>
-      <p className="page-loading-hint">{hint}</p>
-    </div>
-  );
-}
-
 export function Empty({
   text,
   to,
@@ -123,22 +83,29 @@ export function Empty({
 export function DataTable({
   headers,
   children,
+  footer,
+  className,
 }: {
-  headers: string[];
+  headers: ReactNode[];
   children: ReactNode;
+  footer?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="data-wrap">
-      <table className="data-table">
-        <thead>
-          <tr>
-            {headers.map((h) => (
-              <th key={h}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
+    <div className={["data-wrap", className].filter(Boolean).join(" ")}>
+      <div className="data-table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              {headers.map((h, i) => (
+                <th key={i}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{children}</tbody>
+        </table>
+      </div>
+      {footer}
     </div>
   );
 }

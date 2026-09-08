@@ -194,8 +194,8 @@ export const api = {
     if (params?.purpose) query.set("purpose", params.purpose);
     if (params?.ok !== undefined) query.set("ok", String(params.ok));
     if (params?.q) query.set("q", params.q);
-    if (params?.limit) query.set("limit", String(params.limit));
-    if (params?.offset) query.set("offset", String(params.offset));
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
     const suffix = query.toString();
     return request<{ items: ModelCallSummary[]; total: number }>(
       `/api/model-calls${suffix ? `?${suffix}` : ""}`,

@@ -11,6 +11,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["docx-preview"],
+    include: ["docx-preview", "nprogress"],
   },
 });

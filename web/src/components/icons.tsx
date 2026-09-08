@@ -6,6 +6,16 @@ export function IconQuestion({ size = 14 }: { size?: number }) {
   );
 }
 
+export function IconInfo({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12 11.2V17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="12" cy="8" r="1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function IconDownload({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
@@ -268,6 +278,47 @@ export function IconImageCollection({ size = 20 }: { size?: number }) {
       <path
         fillRule="evenodd"
         d="M1.55 5.852c0-1.344 0-2.016.262-2.53A2.4 2.4 0 0 1 2.86 2.273C3.374 2.012 4.046 2.012 5.39 2.012h5.654c1.344 0 2.016 0 2.53.262.45.23.818.597 1.048 1.048.262.514.262 1.186.262 2.53v4.296c0 1.344 0 2.016-.262 2.53a2.4 2.4 0 0 1-1.048 1.048c-.514.262-1.186.262-2.53.262H5.39c-1.344 0-2.016 0-2.53-.262a2.4 2.4 0 0 1-1.048-1.048C1.55 12.164 1.55 11.492 1.55 10.148V5.852Zm3.84-2.507h5.654c.694 0 1.134 0 1.467.028.318.026.42.069.457.088.2.102.364.265.466.466.02.037.063.139.089.456.027.334.028.774.028 1.468v4.296c0 .008 0 .016 0 .024L10.317 6.938a.667.667 0 0 0-.943 0L3.71 12.603c-.155-.024-.216-.05-.244-.065a1.067 1.067 0 0 1-.466-.466c-.02-.037-.062-.139-.088-.456-.027-.334-.028-.774-.028-1.468V5.852c0-.694 0-1.134.027-1.468.026-.317.069-.419.088-.456.102-.201.265-.365.466-.466.038-.02.139-.063.457-.089.334-.027.774-.028 1.468-.028Zm4.455 5.007-4.302 4.303h5.501c.694 0 1.134 0 1.467-.029.318-.025.42-.068.457-.087.2-.102.364-.265.466-.466.008-.016.021-.044.035-.096L9.845 8.353Z"
+      />
+    </svg>
+  );
+}
+
+export function IconTokenIn({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 4v16M6 14l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconTokenOut({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 20V4M6 10l6-6 6 6"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function IconTokenTotal({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M3.2 5.6 8 3.2l4.8 2.4M3.2 5.6v4.8L8 12.8l4.8-2.4V5.6M3.2 5.6 8 8l4.8-2.4M8 8v4.8"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
       />
     </svg>
   );

@@ -18,7 +18,7 @@ import { InputDataModal } from "../components/InputDataModal";
 import { CollectionMetaCard } from "../components/CollectionMetaCard";
 import { ColorIcon } from "../components/ColorIcon";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Empty, PageLoading, goBack } from "../components/chrome";
+import { Empty, goBack } from "../components/chrome";
 import { IconList, IconMaximize, IconSearch, IconTextT, IconTrash, IconEdit } from "../components/icons";
 import { TrainingStatesModal } from "../components/TrainingStatesModal";
 import { DataProcess } from "../import/DataProcess";
@@ -109,11 +109,7 @@ export function KbDataPage() {
   const indexAmount = rows.reduce((n, c) => n + Math.max(c.indexes?.length || 0, 1), 0);
 
   if (!kbsReady) {
-    return (
-      <div className="page">
-        <PageLoading label="正在打开数据集" />
-      </div>
-    );
+    return <div className="page" aria-busy="true" />;
   }
 
   if (!kb || !source) {

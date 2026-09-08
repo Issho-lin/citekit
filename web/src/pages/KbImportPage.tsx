@@ -7,7 +7,6 @@ import { FileImageDataset } from "../import/FileImageDataset";
 import { FileLink } from "../import/FileLink";
 import { FileLocal } from "../import/FileLocal";
 import type { ImportSourceKind } from "../import/types";
-import { PageLoading } from "../components/chrome";
 import { useStore } from "../mock/store";
 
 function kindFromQuery(source: string | null): ImportSourceKind {
@@ -28,11 +27,7 @@ export function KbImportPage() {
   const parentId = params.get("parent") || undefined;
 
   if (!kbsReady) {
-    return (
-      <div className="page">
-        <PageLoading label="正在准备导入" />
-      </div>
-    );
+    return <div className="page" aria-busy="true" />;
   }
 
   if (!kb || !kbId) {

@@ -14,6 +14,7 @@ import {
 } from "@chakra-ui/react";
 import { BrandLogo } from "../components/BrandLogo";
 import { useStore } from "../mock/store";
+import { usePageProgress } from "../progress";
 import {
   IconBook,
   IconBolt,
@@ -37,9 +38,10 @@ const links = [
 export function AppShell() {
   const loc = useLocation();
   const nav = useNavigate();
-  const { knowledgeBases, tools, endpoints } = useStore();
+  const { knowledgeBases, kbsReady, tools, endpoints } = useStore();
   const [q, setQ] = useState("");
   const [jumpOpen, setJumpOpen] = useState(false);
+  usePageProgress(!kbsReady);
 
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Button,
-  Flex,
   HStack,
   Input,
   Modal,
@@ -10,14 +9,17 @@ import {
   ModalContent,
   ModalHeader,
   ModalOverlay,
+  Tooltip,
 } from "@chakra-ui/react";
 import { api } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { DataTable, Empty, PageHero, PageLoading, Panel } from "../components/chrome";
+import { DataTable, Empty, PageHero } from "../components/chrome";
+import { IconChevron, IconInfo, IconTokenIn, IconTokenOut } from "../components/icons";
 import { MySelect } from "../components/MySelect";
 import { ProviderAvatar } from "../components/model/shared";
 import { useToast } from "../components/Toast";
 import { MODEL_TYPE_META } from "../mock/models";
+import { usePageProgress } from "../progress";
 import type { ModelCall, ModelCallSummary } from "../types";
 
 const PURPOSE_LABEL: Record<string, string> = {
@@ -36,7 +38,7 @@ const PURPOSE_LABEL: Record<string, string> = {
   call: "其它",
 };
 
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [10, 20, 50];
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -58,6 +60,88 @@ function pretty(value: unknown) {
   }
 }
 
+function formatCount(n: number | null | undefined) {
+  if (n == null) return "—";
+  return n.toLocaleString("en-US");
+}
+
+function TokenUsage({ row }: { row: ModelCallSummary }) {
+  if (row.promptTokens == null && row.completionTokens == null && row.totalTokens == null) {
+    return <span className="call-tokens-empty">—</span>;
+  }
+  const total = row.totalTokens ?? (row.promptTokens ?? 0) + (row.completionTokens ?? 0);
+  return (
+    <div className="token-cell">
+      <div className="token-line">
+        <span className="token-metric in">
+          <IconTokenIn size={18} />
+          {formatCount(row.promptTokens)}
+        </span>
+        <span className="token-metric out">
+          <IconTokenOut size={18} />
+          {formatCount(row.completionTokens)}
+        </span>
+      </div>
+      <Tooltip
+        placement="top"
+        hasArrow
+        openDelay={150}
+        gutter={10}
+        bg="#2b303b"
+        color="white"
+        px={0}
+        py={0}
+        borderRadius="8px"
+        label={
+          <div className="token-detail">
+            <div className="token-detail-title">Token 明细</div>
+            <div className="token-detail-row">
+              <span>输入 Token</span>
+              <b>{formatCount(row.promptTokens)}</b>
+            </div>
+            <div className="token-detail-row">
+              <span>输出 Token</span>
+              <b>{formatCount(row.completionTokens)}</b>
+            </div>
+            <div className="token-detail-hr" />
+            <div className="token-detail-row total">
+              <span>总 Token</span>
+              <b>{formatCount(total)}</b>
+            </div>
+          </div>
+        }
+      >
+        <span
+          className="token-info"
+          aria-label="Token 明细"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <IconInfo size={14} />
+        </span>
+      </Tooltip>
+    </div>
+  );
+}
+
+function pageItems(page: number, pageCount: number): Array<number | "…"> {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, i) => i + 1);
+  const keep = [...new Set([1, pageCount, page - 1, page, page + 1])]
+    .filter((n) => n >= 1 && n <= pageCount)
+    .sort((a, b) => a - b);
+  const out: Array<number | "…"> = [];
+  for (const n of keep) {
+    if (out.length) {
+      const prev = out[out.length - 1];
+      if (typeof prev === "number" && n - prev > 1) out.push("…");
+    }
+    out.push(n);
+  }
+  return out;
+}
+
 export function CallLogsPage() {
   const toast = useToast();
   const [type, setType] = useState("");
@@ -65,6 +149,8 @@ export function CallLogsPage() {
   const [result, setResult] = useState("");
   const [q, setQ] = useState("");
   const [qDraft, setQDraft] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [items, setItems] = useState<ModelCallSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -72,33 +158,51 @@ export function CallLogsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
 
+  const filterKey = `${type}|${purpose}|${result}|${q}|${pageSize}`;
+  const filterRef = useRef(filterKey);
+  let nextPage = page;
+  if (filterRef.current !== filterKey) {
+    filterRef.current = filterKey;
+    nextPage = 1;
+    if (page !== 1) setPage(1);
+  }
+
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(nextPage, pageCount);
+  usePageProgress(loading || (detailLoading && !detail));
+
   const query = useMemo(
     () => ({
       type: type || undefined,
       purpose: purpose || undefined,
       ok: result === "ok" ? true : result === "fail" ? false : undefined,
       q: q.trim() || undefined,
-      limit: PAGE_SIZE,
+      limit: pageSize,
+      offset: (currentPage - 1) * pageSize,
     }),
-    [type, purpose, result, q],
+    [type, purpose, result, q, pageSize, currentPage],
   );
 
-  const load = useCallback(async (offset = 0, append = false) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await api.listModelCalls({ ...query, offset });
+      const data = await api.listModelCalls(query);
       setTotal(data.total);
-      setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+      setItems(data.items);
     } catch (err) {
       toast(err instanceof Error ? err.message : "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, [query, toast]);
 
   useEffect(() => {
-    void load(0, false);
+    void load();
   }, [load]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   async function openDetail(id: string) {
     setDetailLoading(true);
@@ -128,7 +232,7 @@ export function CallLogsPage() {
           desc="所有实际上游模型请求都会记在这里：连通测试、入库向量化、检索、重排、拉取模型列表。点一行看请求和响应。"
           action={
             <HStack spacing={2}>
-              <Button size="sm" variant="whiteBase" onClick={() => void load(0, false)} isLoading={loading}>
+              <Button size="sm" variant="whiteBase" onClick={() => void load()} isLoading={loading}>
                 刷新
               </Button>
               <Button size="sm" variant="whiteBase" onClick={() => setClearOpen(true)} isDisabled={total === 0}>
@@ -188,54 +292,113 @@ export function CallLogsPage() {
           />
         </div>
 
-        {loading && items.length === 0 ? (
-          <PageLoading compact label="正在拉取调用记录" />
-        ) : items.length === 0 ? (
+        {loading && items.length === 0 ? null : items.length === 0 ? (
           <Empty
             text={
-              <>
-                还没有调用记录。去 <Link to="/settings">设置</Link> 测一下模型，或入库 / 试搜后会显示在这里。
-              </>
+              type || purpose || result || q.trim() ? (
+                "没有符合筛选条件的调用记录。"
+              ) : (
+                <>
+                  还没有调用记录。去 <Link to="/settings">设置</Link> 测一下模型，或入库 / 试搜后会显示在这里。
+                </>
+              )
             }
           />
         ) : (
-          <Panel title={`共 ${total} 条`}>
-            <DataTable headers={["时间", "模型", "用途", "结果", "耗时", "摘要"]}>
-              {items.map((row) => (
-                <tr key={row.id} className="clickable" onClick={() => void openDetail(row.id)}>
-                  <td className="mono">{formatTime(row.createdAt)}</td>
-                  <td>
-                    <Flex align="center" gap={2}>
-                      {row.provider ? <ProviderAvatar provider={row.provider} /> : null}
-                      <div>
-                        <div>{row.modelName || row.modelId || "—"}</div>
-                        <div className="mono">
-                          {typeLabel(row.type)}
-                          {row.mappedModel && row.mappedModel !== row.modelId ? ` · ${row.mappedModel}` : ""}
-                        </div>
-                      </div>
-                    </Flex>
-                  </td>
-                  <td>{PURPOSE_LABEL[row.purpose] || row.purpose || "—"}</td>
-                  <td>
-                    <span className={row.ok ? "call-ok" : "call-fail"}>
-                      {row.ok ? "成功" : "失败"}
-                      {row.httpStatus ? ` ${row.httpStatus}` : ""}
+          <DataTable
+            className="call-table"
+            headers={[
+              "时间",
+              "模型",
+              "用途",
+              "状态",
+              "耗时",
+              "TOKEN",
+              "摘要",
+            ]}
+            footer={
+              <div className="table-pager">
+                <button
+                  type="button"
+                  className="pager-btn"
+                  aria-label="上一页"
+                  disabled={currentPage <= 1 || loading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  <span className="pager-chevron prev">
+                    <IconChevron size={14} />
+                  </span>
+                </button>
+                {pageItems(currentPage, pageCount).map((item, i) =>
+                  item === "…" ? (
+                    <span key={`e-${i}`} className="pager-ellipsis">
+                      …
                     </span>
-                  </td>
-                  <td className="mono">{row.latencyMs} ms</td>
-                  <td className="call-summary">{row.summary || row.error || "—"}</td>
-                </tr>
-              ))}
-            </DataTable>
-            {items.length < total ? (
-              <div className="call-more">
-                <Button size="sm" variant="whiteBase" onClick={() => void load(items.length, true)} isLoading={loading}>
-                  加载更多
-                </Button>
+                  ) : (
+                    <button
+                      key={item}
+                      type="button"
+                      className={item === currentPage ? "pager-btn active" : "pager-btn"}
+                      aria-current={item === currentPage ? "page" : undefined}
+                      disabled={loading}
+                      onClick={() => setPage(item)}
+                    >
+                      {item}
+                    </button>
+                  ),
+                )}
+                <button
+                  type="button"
+                  className="pager-btn"
+                  aria-label="下一页"
+                  disabled={currentPage >= pageCount || loading}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  <span className="pager-chevron">
+                    <IconChevron size={14} />
+                  </span>
+                </button>
+                <MySelect
+                  h="32px"
+                  w="108px"
+                  value={String(pageSize)}
+                  onChange={(next) => setPageSize(Number(next) || 10)}
+                  list={PAGE_SIZES.map((n) => ({ value: String(n), label: `${n} 条/页` }))}
+                />
               </div>
-            ) : null}
-          </Panel>
+            }
+          >
+            {items.map((row) => (
+              <tr key={row.id} className="clickable" onClick={() => void openDetail(row.id)}>
+                <td className="call-time">{formatTime(row.createdAt)}</td>
+                <td>
+                  <div className="call-model">
+                    {row.provider ? <ProviderAvatar provider={row.provider} size={28} /> : null}
+                    <div>
+                      <div className="call-model-name">{row.modelName || row.modelId || "—"}</div>
+                      <div className="call-model-sub">
+                        {typeLabel(row.type)}
+                        {row.mappedModel && row.mappedModel !== row.modelId ? ` · ${row.mappedModel}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="call-purpose">{PURPOSE_LABEL[row.purpose] || row.purpose || "—"}</td>
+                <td>
+                  <span className={row.ok ? "call-status ok" : "call-status fail"}>
+                    <span className="call-status-dot" />
+                    {row.ok ? "成功" : "失败"}
+                    {row.httpStatus ? ` ${row.httpStatus}` : ""}
+                  </span>
+                </td>
+                <td className="call-latency">{row.latencyMs.toLocaleString("zh-CN")} ms</td>
+                <td>
+                  <TokenUsage row={row} />
+                </td>
+                <td className="call-summary">{row.summary || row.error || "—"}</td>
+              </tr>
+            ))}
+          </DataTable>
         )}
       </div>
 
@@ -244,7 +407,7 @@ export function CallLogsPage() {
         <ModalContent maxW="880px">
           <ModalHeader fontSize="16px">调用详情</ModalHeader>
           <ModalBody pb={6}>
-            {detail ? <CallDetail call={detail} onCopy={copy} /> : <PageLoading compact label="正在打开详情" />}
+            {detail ? <CallDetail call={detail} onCopy={copy} /> : null}
           </ModalBody>
         </ModalContent>
       </Modal>
@@ -258,6 +421,7 @@ export function CallLogsPage() {
           const res = await api.clearModelCalls();
           setItems([]);
           setTotal(0);
+          setPage(1);
           toast(`已删除 ${res.deleted} 条`);
         }}
       >
@@ -306,10 +470,11 @@ function CallDetail({
           {typeLabel(call.type)}
           {call.provider ? ` · ${call.provider}` : ""}
         </div>
-        {call.totalTokens != null ? (
+        {(call.promptTokens != null || call.completionTokens != null || call.totalTokens != null) ? (
           <div>
             <span>用量</span>
-            {call.promptTokens ?? "—"} / {call.completionTokens ?? "—"} / {call.totalTokens} tokens
+            输入 {formatCount(call.promptTokens)} · 输出 {formatCount(call.completionTokens)}
+            {call.totalTokens != null ? ` · 合计 ${formatCount(call.totalTokens)}` : ""}
           </div>
         ) : null}
         {call.kbId ? (
