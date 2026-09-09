@@ -15,6 +15,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmText = "删除",
+  confirmScheme = "red",
   onConfirm,
 }: {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export function ConfirmDialog({
   title: string;
   children: ReactNode;
   confirmText?: string;
+  confirmScheme?: string;
   onConfirm: () => void | Promise<void>;
 }) {
   const cancelRef = useRef(null);
@@ -38,7 +40,7 @@ export function ConfirmDialog({
               取消
             </Button>
             <Button
-              colorScheme="red"
+              colorScheme={confirmScheme}
               ml={3}
               onClick={() => {
                 void (async () => {

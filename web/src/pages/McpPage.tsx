@@ -7,7 +7,11 @@ import { useStore } from "../mock/store";
 
 export function McpPage() {
   const nav = useNavigate();
-  const { endpoints } = useStore();
+  const { endpoints, kbsReady } = useStore();
+
+  if (!kbsReady) {
+    return <div className="page" aria-busy="true" />;
+  }
 
   return (
     <div className="page">

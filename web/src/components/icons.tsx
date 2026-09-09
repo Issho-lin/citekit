@@ -238,6 +238,23 @@ export function IconSend({ size = 16 }: { size?: number }) {
   );
 }
 
+export function IconStop({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" />
+    </svg>
+  );
+}
+
+export function IconChat({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4 3v-3H7.5A2.5 2.5 0 0 1 5 13.5v-7z" />
+      <path d="M8.5 9h7M8.5 12h4.5" />
+    </svg>
+  );
+}
+
 export function IconSwap({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor">
@@ -320,6 +337,16 @@ export function IconTokenTotal({ size = 14 }: { size?: number }) {
         strokeWidth="1.5"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+export function IconSpark({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M7.2 1.15c.18 1.62.72 2.28 2.28 2.55-1.56.27-2.1.93-2.28 2.55-.18-1.62-.72-2.28-2.28-2.55 1.56-.27 2.1-.93 2.28-2.55Z" />
+      <path d="M12.05 7.4c.12.96.5 1.38 1.45 1.55-.95.17-1.33.59-1.45 1.55-.12-.96-.5-1.38-1.45-1.55.95-.17 1.33-.59 1.45-1.55Z" />
+      <path d="M3.55 8.85c.1.74.4 1.06 1.12 1.2-.72.14-1.02.46-1.12 1.2-.1-.74-.4-1.06-1.12-1.2.72-.14 1.02-.46 1.12-1.2Z" />
     </svg>
   );
 }

@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     host: str = "127.0.0.1"
     port: int = 8000
+    public_url: str = "http://127.0.0.1:8000"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     database_url: str = "mysql+pymysql://citekit:citekit@127.0.0.1:3306/citekit?charset=utf8mb4"
     qdrant_url: str = "http://127.0.0.1:6333"

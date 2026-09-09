@@ -64,6 +64,7 @@ export function MySelect({
   searchable = false,
   allowCustom = false,
   isDisabled = false,
+  truncate = true,
 }: {
   value: string;
   list: SelectOption[];
@@ -74,6 +75,7 @@ export function MySelect({
   searchable?: boolean;
   allowCustom?: boolean;
   isDisabled?: boolean;
+  truncate?: boolean;
 }) {
   if (searchable) {
     return (
@@ -86,6 +88,7 @@ export function MySelect({
         h={h}
         allowCustom={allowCustom}
         isDisabled={isDisabled}
+        truncate={truncate}
       />
     );
   }
@@ -98,6 +101,7 @@ export function MySelect({
       w={w}
       h={h}
       isDisabled={isDisabled}
+      truncate={truncate}
     />
   );
 }
@@ -106,15 +110,21 @@ function TriggerLabel({
   selected,
   value,
   placeholder,
+  truncate = true,
 }: {
   selected?: SelectOption;
   value: string;
   placeholder: string;
+  truncate?: boolean;
 }) {
   return (
-    <Flex align="center" gap={2} minW={0} flex="1">
+    <Flex align="center" gap={2} minW={truncate ? 0 : "max-content"} flex={truncate ? "1" : "0 0 auto"}>
       {selected?.icon}
-      <Box overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
+      <Box
+        overflow={truncate ? "hidden" : "visible"}
+        textOverflow={truncate ? "ellipsis" : "clip"}
+        whiteSpace="nowrap"
+      >
         {selected?.label ?? (value || placeholder)}
       </Box>
     </Flex>
@@ -129,6 +139,7 @@ function MenuSelect({
   w,
   h,
   isDisabled,
+  truncate = true,
 }: {
   value: string;
   list: SelectOption[];
@@ -137,6 +148,7 @@ function MenuSelect({
   w: string | number;
   h: string | number;
   isDisabled: boolean;
+  truncate?: boolean;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [menuMinW, setMenuMinW] = useState<number>();
@@ -174,7 +186,7 @@ function MenuSelect({
               </Box>
             }
           >
-            <TriggerLabel selected={selected} value={value} placeholder={placeholder} />
+            <TriggerLabel selected={selected} value={value} placeholder={placeholder} truncate={truncate} />
           </MenuButton>
           <MenuList
             minW={minW}
@@ -224,6 +236,7 @@ function SearchableSelect({
   h,
   allowCustom,
   isDisabled,
+  truncate = true,
 }: {
   value: string;
   list: SelectOption[];
@@ -233,6 +246,7 @@ function SearchableSelect({
   h: string | number;
   allowCustom: boolean;
   isDisabled: boolean;
+  truncate?: boolean;
 }) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -292,7 +306,7 @@ function SearchableSelect({
                 </Box>
               }
             >
-              <TriggerLabel selected={selected} value={value} placeholder={placeholder} />
+              <TriggerLabel selected={selected} value={value} placeholder={placeholder} truncate={truncate} />
             </Button>
           </PopoverTrigger>
           <PopoverContent

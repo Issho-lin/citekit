@@ -49,7 +49,7 @@ export function toolNext(toolId: string, endpoints: McpEndpoint[]): NextStep {
     return { text: "还没有 MCP 端点挂上这把工具。", to: `/mcp/new?tool=${toolId}`, cta: "发布端点" };
   }
   return {
-    text: `已在 ${published.map((e) => e.name).join("、")} 白名单中。`,
+    text: `已在 ${published.map((e) => e.name).join("、")} 白名单中。改契约后点「保存并重新发布」。`,
     to: `/mcp/${published[0].id}`,
     cta: "查看端点",
     done: true,

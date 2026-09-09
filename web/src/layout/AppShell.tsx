@@ -18,6 +18,7 @@ import { usePageProgress } from "../progress";
 import {
   IconBook,
   IconBolt,
+  IconChat,
   IconCheck,
   IconDash,
   IconGear,
@@ -30,6 +31,7 @@ const links = [
   { to: "/kb", label: "知识库", icon: IconBook },
   { to: "/tools", label: "工具", icon: IconBolt },
   { to: "/mcp", label: "MCP", icon: IconLink },
+  { to: "/agent", label: "对话", icon: IconChat },
   { to: "/calls", label: "调用", icon: IconTrace },
   { to: "/eval", label: "评测", icon: IconCheck },
   { to: "/settings", label: "设置", icon: IconGear },

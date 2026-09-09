@@ -17,6 +17,7 @@ from citekit_server.db import (
     UploadedFileRow,
     get_db,
 )
+from citekit_server.tools_logic import forget_tools_for_kbs
 from citekit_server.ids import new_id
 from citekit_server.ingest import build_preview_from_kb, ingest_source, now_stamp, reindex_chunk
 from citekit_server.retrieve import search_kb
@@ -206,6 +207,7 @@ def delete_kb(kb_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
             if kid.id not in drop:
                 drop.append(kid.id)
                 changed = True
+    forget_tools_for_kbs(db, drop)
     for kid_id in drop:
         db.query(ChunkRow).filter(ChunkRow.kb_id == kid_id).delete()
         db.query(SourceRow).filter(SourceRow.kb_id == kid_id).delete()

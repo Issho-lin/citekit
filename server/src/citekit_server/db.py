@@ -126,6 +126,38 @@ class ChunkRow(Base):
     indexes: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
+class ToolRow(Base):
+    __tablename__ = "retrieval_tools"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(Text, default="")
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    source_ids: Mapped[list] = mapped_column(JSON, default=list)
+    search: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class McpEndpointRow(Base):
+    __tablename__ = "mcp_endpoints"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    env: Mapped[str] = mapped_column(String(8), default="dev")
+    tool_ids: Mapped[list] = mapped_column(JSON, default=list)
+    api_key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+
+
+class EvalCaseRow(Base):
+    __tablename__ = "eval_cases"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    query: Mapped[str] = mapped_column(Text)
+    tool_id: Mapped[str] = mapped_column(String(32), ForeignKey("retrieval_tools.id"), index=True)
+    expect: Mapped[str] = mapped_column(String(255))
+    warehouse: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
 class ModelCallRow(Base):
     __tablename__ = "model_calls"
 

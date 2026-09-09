@@ -19,6 +19,6 @@ pnpm dev:db
 pnpm dev
 ```
 
-会同时拉起前端 http://localhost:5173 和 API http://127.0.0.1:8000。设置页的模型配置、工作空间默认模型，以及通用知识库的创建、本地文件入库和试搜走真实 API。上传文件存在 MinIO。检索工具与 MCP 仍是前端 mock。
+会同时拉起前端 http://localhost:5173 和 API http://127.0.0.1:8000。设置页的模型配置、工作空间默认模型，以及通用知识库的创建、本地文件入库和试搜走真实 API。上传文件存在 MinIO。检索工具、MCP 端点和评测也走真实 API；MCP 地址是 `http://127.0.0.1:8000/mcp/{端点 id}`，用端点密钥以 Bearer 调用。
 
 只要前端：`pnpm dev:web`；只要后端：`pnpm dev:server`。健康检查 `/health`，接口文档 `/docs`。

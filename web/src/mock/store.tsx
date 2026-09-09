@@ -1,13 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { chunksFromSources } from "./chunks";
-import {
-  endpoints as seedEndpoints,
-  evalCases as seedEval,
-  slices as seedSlices,
-  tools as seedTools,
-} from "./seed";
-import { fillProcess, filtersFromSearch, profileFromSearch } from "../constants";
+import { slices as seedSlices } from "./seed";
+import { fillProcess } from "../constants";
 import type {
   AiModel,
   ApiDatasetServer,
@@ -107,14 +102,15 @@ interface Store {
     kbId: string;
     sourceIds: string[];
     search: SearchConfig;
-  }) => string;
-  updateTool: (id: string, patch: Partial<RetrievalTool>) => void;
-  removeTool: (id: string) => void;
-  addEndpoint: (input: { name: string; env: "dev" | "prod"; toolIds: string[] }) => string;
-  toggleEndpointTool: (endpointId: string, toolId: string) => void;
-  addToolToEndpoint: (endpointId: string, toolId: string) => void;
-  removeEndpoint: (id: string) => void;
-  addEvalCase: (input: { query: string; toolId: string; expect: string; warehouse?: string }) => void;
+  }) => Promise<string>;
+  updateTool: (id: string, patch: Partial<RetrievalTool> & { search?: SearchConfig }) => Promise<void>;
+  removeTool: (id: string) => Promise<void>;
+  addEndpoint: (input: { name: string; env: "dev" | "prod"; toolIds: string[] }) => Promise<string>;
+  toggleEndpointTool: (endpointId: string, toolId: string) => Promise<void>;
+  addToolToEndpoint: (endpointId: string, toolId: string) => Promise<void>;
+  removeEndpoint: (id: string) => Promise<void>;
+  addEvalCase: (input: { query: string; toolId: string; expect: string; warehouse?: string }) => Promise<void>;
+  runEvalCases: () => Promise<{ id: string; pass: boolean; detail: string }[]>;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -124,10 +120,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [kbsReady, setKbsReady] = useState(false);
   const [slices, setSlices] = useState(seedSlices);
   const [sources, setSources] = useState<Source[]>([]);
-  const [tools, setTools] = useState(seedTools);
-  const [endpoints, setEndpoints] = useState(seedEndpoints);
+  const [tools, setTools] = useState<RetrievalTool[]>([]);
+  const [endpoints, setEndpoints] = useState<McpEndpoint[]>([]);
   const [chunks, setChunks] = useState<Chunk[]>([]);
-  const [evalCases, setEvalCases] = useState(seedEval);
+  const [evalCases, setEvalCases] = useState<EvalCase[]>([]);
   const [vectorModel, setVectorModelState] = useState("");
   const [llmModel, setLlmModelState] = useState("");
   const [vlmModel, setVlmModelState] = useState("");
@@ -155,7 +151,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setKnowledgeBases(kbs);
     const nested = await Promise.all(kbs.map((kb) => api.listSources(kb.id)));
     setSources(nested.flat());
-    setKbsReady(true);
+  }, []);
+
+  const reloadTools = useCallback(async () => {
+    const [toolList, endpointList, evalList] = await Promise.all([
+      api.listTools(),
+      api.listEndpoints(),
+      api.listEvalCases(),
+    ]);
+    setTools(toolList);
+    setEndpoints(endpointList);
+    setEvalCases(evalList);
   }, []);
 
   const reloadCatalog = useCallback(async () => {
@@ -170,10 +176,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [applyWorkspace]);
 
   useEffect(() => {
-    void Promise.all([reloadCatalog(), reloadKbs()]).catch((err: unknown) => {
-      console.error("加载配置失败", err);
-    });
-  }, [reloadCatalog, reloadKbs]);
+    void Promise.all([reloadCatalog(), reloadKbs(), reloadTools()])
+      .catch((err: unknown) => {
+        console.error("加载配置失败", err);
+      })
+      .finally(() => setKbsReady(true));
+  }, [reloadCatalog, reloadKbs, reloadTools]);
 
   useEffect(() => {
     if (!sources.some((s) => s.status === "syncing")) return;
@@ -297,9 +305,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const removeKnowledgeBase = useCallback(
     async (id: string) => {
       await api.deleteKb(id);
-      await reloadKbs();
+      await Promise.all([reloadKbs(), reloadTools()]);
     },
-    [reloadKbs],
+    [reloadKbs, reloadTools],
   );
 
   const addSlice = useCallback(
@@ -478,7 +486,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addTool = useCallback(
-    (input: {
+    async (input: {
       name: string;
       title: string;
       description: string;
@@ -486,98 +494,66 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sourceIds: string[];
       search: SearchConfig;
     }) => {
-      const id = nid("tool");
-      const search = { ...input.search };
-      setTools((prev) => [
-        {
-          id,
-          name: input.name,
-          title: input.title,
-          description: input.description,
-          kbId: input.kbId,
-          sourceIds: input.sourceIds,
-          search,
-          profile: profileFromSearch(search),
-          requiredFilters: filtersFromSearch(search),
-        },
-        ...prev,
-      ]);
-      return id;
+      const created = await api.createTool(input);
+      setTools((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+      return created.id;
     },
     [],
   );
 
-  const updateTool = useCallback((id: string, patch: Partial<RetrievalTool>) => {
-    setTools((prev) =>
-      prev.map((t) => {
-        if (t.id !== id) return t;
-        const next = { ...t, ...patch };
-        if (patch.search) {
-          next.search = { ...t.search, ...patch.search };
-          next.profile = profileFromSearch(next.search);
-          next.requiredFilters = filtersFromSearch(next.search);
-        }
-        return next;
-      }),
-    );
+  const updateTool = useCallback(async (id: string, patch: Partial<RetrievalTool> & { search?: SearchConfig }) => {
+    const updated = await api.patchTool(id, patch);
+    setTools((prev) => prev.map((item) => (item.id === id ? updated : item)));
   }, []);
 
-  const removeTool = useCallback((id: string) => {
-    setTools((prev) => prev.filter((t) => t.id !== id));
+  const removeTool = useCallback(async (id: string) => {
+    await api.deleteTool(id);
+    setTools((prev) => prev.filter((item) => item.id !== id));
     setEndpoints((prev) =>
-      prev.map((e) => ({ ...e, toolIds: e.toolIds.filter((tid) => tid !== id) })),
+      prev.map((item) => ({ ...item, toolIds: item.toolIds.filter((tid) => tid !== id) })),
     );
-    setEvalCases((prev) => prev.filter((c) => c.toolId !== id));
+    setEvalCases((prev) => prev.filter((item) => item.toolId !== id));
   }, []);
 
-  const addEndpoint = useCallback((input: { name: string; env: "dev" | "prod"; toolIds: string[] }) => {
-    const id = nid("mcp");
-    const slug = input.name.toLowerCase().replace(/\s+/g, "-").slice(0, 24);
-    setEndpoints((prev) => [
-      {
-        id,
-        url: `https://mcp.citekit.local/s/${slug || id}`,
-        apiKey: `cb_live_${nid("k")}`,
-        ...input,
-      },
-      ...prev,
-    ]);
-    return id;
+  const addEndpoint = useCallback(async (input: { name: string; env: "dev" | "prod"; toolIds: string[] }) => {
+    const created = await api.createEndpoint(input);
+    setEndpoints((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+    return created.id;
   }, []);
 
-  const toggleEndpointTool = useCallback((endpointId: string, toolId: string) => {
-    setEndpoints((prev) =>
-      prev.map((e) => {
-        if (e.id !== endpointId) return e;
-        const has = e.toolIds.includes(toolId);
-        return {
-          ...e,
-          toolIds: has ? e.toolIds.filter((tid: string) => tid !== toolId) : [...e.toolIds, toolId],
-        };
-      }),
-    );
-  }, []);
+  const toggleEndpointTool = useCallback(async (endpointId: string, toolId: string) => {
+    const current = endpoints.find((item) => item.id === endpointId);
+    if (!current) return;
+    const has = current.toolIds.includes(toolId);
+    const toolIds = has ? current.toolIds.filter((tid) => tid !== toolId) : [...current.toolIds, toolId];
+    const updated = await api.patchEndpoint(endpointId, { toolIds });
+    setEndpoints((prev) => prev.map((item) => (item.id === endpointId ? updated : item)));
+  }, [endpoints]);
 
-  const addToolToEndpoint = useCallback((endpointId: string, toolId: string) => {
-    setEndpoints((prev) =>
-      prev.map((e) =>
-        e.id === endpointId && !e.toolIds.includes(toolId)
-          ? { ...e, toolIds: [...e.toolIds, toolId] }
-          : e,
-      ),
-    );
-  }, []);
+  const addToolToEndpoint = useCallback(async (endpointId: string, toolId: string) => {
+    const current = endpoints.find((item) => item.id === endpointId);
+    if (!current || current.toolIds.includes(toolId)) return;
+    const updated = await api.patchEndpoint(endpointId, { toolIds: [...current.toolIds, toolId] });
+    setEndpoints((prev) => prev.map((item) => (item.id === endpointId ? updated : item)));
+  }, [endpoints]);
 
-  const removeEndpoint = useCallback((id: string) => {
-    setEndpoints((prev) => prev.filter((e) => e.id !== id));
+  const removeEndpoint = useCallback(async (id: string) => {
+    await api.deleteEndpoint(id);
+    setEndpoints((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   const addEvalCase = useCallback(
-    (input: { query: string; toolId: string; expect: string; warehouse?: string }) => {
-      setEvalCases((prev) => [{ id: nid("ev"), ...input }, ...prev]);
+    async (input: { query: string; toolId: string; expect: string; warehouse?: string }) => {
+      const created = await api.createEvalCase(input);
+      setEvalCases((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
     },
     [],
   );
+
+  const runEvalCases = useCallback(async () => {
+    const result = await api.runEvalCases();
+    return result.items.map((item) => ({ id: item.id, pass: item.ok, detail: item.detail }));
+  }, []);
 
   const value = useMemo<Store>(
     () => ({
@@ -628,6 +604,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addToolToEndpoint,
       removeEndpoint,
       addEvalCase,
+      runEvalCases,
     }),
     [
       knowledgeBases,
@@ -677,6 +654,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addToolToEndpoint,
       removeEndpoint,
       addEvalCase,
+      runEvalCases,
     ],
   );
 

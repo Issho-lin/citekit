@@ -7,7 +7,11 @@ import { useStore } from "../mock/store";
 
 export function ToolsPage() {
   const nav = useNavigate();
-  const { tools, knowledgeBases, sources, endpoints } = useStore();
+  const { tools, knowledgeBases, sources, endpoints, kbsReady } = useStore();
+
+  if (!kbsReady) {
+    return <div className="page" aria-busy="true" />;
+  }
 
   return (
     <div className="page">

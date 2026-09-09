@@ -11,7 +11,7 @@ export function NewMcpPage() {
   const toast = useToast();
   const [params] = useSearchParams();
   const preset = params.get("tool");
-  const { tools, addEndpoint } = useStore();
+  const { tools, addEndpoint, kbsReady } = useStore();
   const [name, setName] = useState("");
   const [env, setEnv] = useState<"dev" | "prod">("dev");
   const [toolIds, setToolIds] = useState<string[]>(preset ? [preset] : []);
@@ -20,15 +20,19 @@ export function NewMcpPage() {
     setToolIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  function onSubmit(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim() || toolIds.length === 0) {
       toast("请填写名称并至少勾选一把工具");
       return;
     }
-    const id = addEndpoint({ name: name.trim(), env, toolIds });
-    toast("端点已创建，可复制 URL 给 Agent");
-    nav(`/mcp/${id}`);
+    try {
+      const id = await addEndpoint({ name: name.trim(), env, toolIds });
+      toast("端点已创建，可复制 URL 给 Agent");
+      nav(`/mcp/${id}`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "创建失败");
+    }
   }
 
   return (
@@ -41,7 +45,9 @@ export function NewMcpPage() {
           ]}
         />
         <PageHero title="新建 MCP 端点" desc="白名单即 Agent 能调用的检索工具。默认不提供搜全部。" />
-        {tools.length === 0 ? (
+        {kbsReady === false ? (
+          <div aria-busy="true" />
+        ) : tools.length === 0 ? (
           <Empty text="还没有检索工具。" to="/tools/new" cta="先做成工具" />
         ) : (
           <form className="form-stack" onSubmit={onSubmit}>

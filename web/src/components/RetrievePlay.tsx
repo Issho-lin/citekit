@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { Alert, Button, Input, Switch } from "@chakra-ui/react";
+import { Alert, Button, Switch } from "@chakra-ui/react";
 import { SEARCH_MODES } from "../constants";
 import { retrieve, type Hit } from "../mock/retrieve";
 import type { Chunk, RetrievalProfile, SearchConfig } from "../types";
@@ -42,11 +42,9 @@ function SwitchField({
 export function SearchParamsFields({
   search,
   onChange,
-  showFilterFirst = false,
 }: {
   search: SearchConfig;
   onChange: (next: SearchConfig) => void;
-  showFilterFirst?: boolean;
 }) {
   const { aiModels } = useStore();
   const hasRerank = aiModels.some((m) => m.isActive && m.type === "rerank");
@@ -102,14 +100,6 @@ export function SearchParamsFields({
         disabled={!hasRerank}
         onChange={(usingRerank) => patch({ usingRerank })}
       />
-      {showFilterFirst && (
-        <SwitchField
-          title="先按仓库过滤"
-          tip="调用时必须带上仓库（如华北、华南），只在该仓数据里检索，避免全表语义碰运气。适合报价、库存；制度、FAQ 不要开。Agent 入参字段名是 warehouse。"
-          checked={search.filterFirst}
-          onChange={(filterFirst) => patch({ filterFirst })}
-        />
-      )}
     </div>
   );
 }
@@ -121,7 +111,6 @@ export function RetrievePlay({
   profile,
   search,
   onSearchChange,
-  showFilterFirst = false,
   chunks,
   defaultQuery = "",
   placeholder = "输入问题，测试检索",
@@ -133,7 +122,6 @@ export function RetrievePlay({
   profile?: RetrievalProfile;
   search?: SearchConfig;
   onSearchChange?: (next: SearchConfig) => void;
-  showFilterFirst?: boolean;
   chunks: Chunk[];
   defaultQuery?: string;
   placeholder?: string;
@@ -144,14 +132,12 @@ export function RetrievePlay({
   }) => Promise<{ hits: Hit[]; message?: string }>;
 }) {
   const [query, setQuery] = useState(defaultQuery);
-  const [warehouse, setWarehouse] = useState("华北");
   const [hits, setHits] = useState<Hit[]>([]);
   const [message, setMessage] = useState<string | undefined>();
   const [ran, setRan] = useState(false);
   const [loading, setLoading] = useState(false);
   const [localSearch, setLocalSearch] = useState(search);
   const activeSearch = localSearch ?? search;
-  const filterFirst = activeSearch?.filterFirst || profile === "filter_first";
 
   useEffect(() => {
     setLocalSearch(search);
@@ -169,9 +155,8 @@ export function RetrievePlay({
               sliceIds,
               sourceIds,
               query,
-              profile: filterFirst ? "filter_first" : profile,
+              profile,
               search: activeSearch,
-              warehouse: filterFirst ? warehouse : undefined,
             },
             chunks,
           );
@@ -196,20 +181,11 @@ export function RetrievePlay({
             setLocalSearch(next);
             onSearchChange(next);
           }}
-          showFilterFirst={showFilterFirst}
         />
       )}
       <form onSubmit={onSearch} className="search-bar">
         <IconSearch />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={placeholder} />
-        {filterFirst && (
-          <Input
-            maxW="120px"
-            value={warehouse}
-            onChange={(e) => setWarehouse(e.target.value)}
-            placeholder="仓库，如华北"
-          />
-        )}
         <Button type="submit" isLoading={loading}>
           检索测试
         </Button>

@@ -495,6 +495,110 @@ def _choice_text(body: Any) -> str:
     return ""
 
 
+def chat_messages(
+    model: AiModelRow,
+    api_key: str,
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | dict[str, Any] | None = None,
+    max_tokens: int = 2048,
+    timeout: float = 90.0,
+    thinking: bool = False,
+) -> dict[str, Any]:
+    token = (api_key or model.request_auth or "").strip()
+    if not token:
+        raise RuntimeError("请填写 API 密钥，或先在供应商配置里保存密钥")
+    base, proto = _require_base(model)
+    url = _endpoint(base, proto, "chat")
+    payload: dict[str, Any] = {
+        "model": _model_id(model),
+        "messages": messages,
+        "temperature": 0.2,
+        "max_tokens": max_tokens,
+    }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+    if thinking:
+        payload["enable_thinking"] = True
+        payload["chat_template_kwargs"] = {"enable_thinking": True}
+    else:
+        payload["enable_thinking"] = False
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
+    response = _request_sync(
+        "POST",
+        url,
+        headers=_headers(token),
+        json_body=payload,
+        kind="chat",
+        model=model,
+        timeout=timeout,
+    )
+    err = _upstream_error(response.status_code, response.text)
+    if err:
+        raise RuntimeError(err)
+    try:
+        body = response.json()
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("模型没有返回 JSON") from exc
+    out = _choice_message(body)
+    if not (out["content"] or "").strip() and not out["tool_calls"] and not (out.get("reasoning") or "").strip():
+        raise RuntimeError("模型没有返回内容")
+    return out
+
+
+def _choice_message(body: Any) -> dict[str, Any]:
+    content = _choice_text(body)
+    tool_calls: list[dict[str, Any]] = []
+    reasoning = ""
+    message: dict[str, Any] = {}
+    if isinstance(body, dict):
+        choices = body.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+            raw = choices[0].get("message") or choices[0].get("delta") or {}
+            if isinstance(raw, dict):
+                message = raw
+    if isinstance(message.get("content"), str) and not content:
+        content = message["content"]
+    for key in ("reasoning_content", "reasoning", "thinking"):
+        value = message.get(key)
+        if isinstance(value, str) and value.strip():
+            reasoning = value.strip()
+            break
+    calls = message.get("tool_calls")
+    if isinstance(calls, list):
+        for index, item in enumerate(calls):
+            parsed = _as_tool_call(item, index)
+            if parsed:
+                tool_calls.append(parsed)
+    function_call = message.get("function_call")
+    if not tool_calls and isinstance(function_call, dict) and function_call.get("name"):
+        parsed = _as_tool_call({"id": "call_0", "function": function_call}, 0)
+        if parsed:
+            tool_calls.append(parsed)
+    return {"content": content, "tool_calls": tool_calls, "reasoning": reasoning}
+
+
+def _as_tool_call(item: Any, index: int) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    fn = item.get("function") if isinstance(item.get("function"), dict) else item
+    name = str((fn or {}).get("name") or "").strip()
+    if not name:
+        return None
+    args = (fn or {}).get("arguments")
+    if isinstance(args, dict):
+        raw = json.dumps(args, ensure_ascii=False)
+    else:
+        raw = str(args or "{}")
+    return {
+        "id": str(item.get("id") or f"call_{index}"),
+        "type": "function",
+        "function": {"name": name, "arguments": raw},
+    }
+
+
 def rerank_texts(model: AiModelRow, api_key: str, query: str, documents: list[str]) -> list[float]:
     if not documents:
         return []

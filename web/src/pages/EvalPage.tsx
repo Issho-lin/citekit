@@ -1,77 +1,66 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Input } from "@chakra-ui/react";
 import { DataTable, Empty, PageHero, Panel } from "../components/chrome";
 import { MySelect } from "../components/MySelect";
-import { retrieve } from "../mock/retrieve";
-import { searchFromTool } from "../constants";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
 
 export function EvalPage() {
-  const { evalCases, tools, chunks, addEvalCase } = useStore();
+  const { evalCases, tools, kbsReady, addEvalCase, runEvalCases } = useStore();
   const toast = useToast();
-  const [rows, setRows] = useState<{ id: string; pass: boolean | null; detail: string }[]>(
-    () => evalCases.map((c) => ({ id: c.id, pass: null, detail: "未跑" })),
-  );
+  const [rows, setRows] = useState<{ id: string; pass: boolean | null; detail: string }[]>([]);
   const [query, setQuery] = useState("");
-  const [toolId, setToolId] = useState(tools[0]?.id ?? "");
+  const [toolId, setToolId] = useState("");
   const [expect, setExpect] = useState("");
-  const [warehouse, setWarehouse] = useState("");
-  const selected = tools.find((t) => t.id === toolId);
-  const needWarehouse = Boolean(selected?.search.filterFirst);
+  const [running, setRunning] = useState(false);
+  const selected = tools.find((t) => t.id === toolId) ?? tools[0];
+  const activeToolId = selected?.id ?? "";
 
-  function runAll() {
-    const next = evalCases.map((c) => {
-      const tool = tools.find((t) => t.id === c.toolId);
-      if (!tool) return { id: c.id, pass: false, detail: "工具不存在" };
-      const result = retrieve(
-        {
-          sourceIds: tool.sourceIds,
-          query: c.query,
-          profile: tool.profile,
-          search: searchFromTool(tool),
-          warehouse: c.warehouse,
-        },
-        chunks,
-      );
-      const hit = result.hits.some(
-        (h) => h.chunk.locator.includes(c.expect) || h.chunk.locator === c.expect,
-      );
-      if (result.message && result.hits.length === 0) {
-        return { id: c.id, pass: false, detail: result.message };
-      }
-      return {
-        id: c.id,
-        pass: hit,
-        detail: hit ? `命中 ${c.expect}` : `未命中，返回 ${result.hits.length} 条`,
-      };
-    });
-    setRows(next);
-    const failed = next.filter((r) => r.pass === false).length;
-    toast(failed === 0 ? "全部通过" : `${failed} 条未过，勿标 prod`);
+  useEffect(() => {
+    if (!toolId && tools[0]) setToolId(tools[0].id);
+  }, [tools, toolId]);
+
+  useEffect(() => {
+    setRows(evalCases.map((c) => ({ id: c.id, pass: null, detail: "未跑" })));
+  }, [evalCases]);
+
+  if (!kbsReady) {
+    return <div className="page" aria-busy="true" />;
   }
 
-  function onAdd(e: FormEvent) {
+  async function runAll() {
+    setRunning(true);
+    try {
+      const next = await runEvalCases();
+      setRows(next);
+      const failed = next.filter((r) => r.pass === false).length;
+      toast(failed === 0 ? "全部通过" : `${failed} 条未过，勿标 prod`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "评测失败");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function onAdd(e: FormEvent) {
     e.preventDefault();
-    if (!query.trim() || !toolId || !expect.trim()) {
+    if (!query.trim() || !activeToolId || !expect.trim()) {
       toast("请填写问句、工具和应命中定位");
       return;
     }
-    if (needWarehouse && !warehouse.trim()) {
-      toast("这把工具需要填写仓库");
-      return;
+    try {
+      await addEvalCase({
+        query: query.trim(),
+        toolId: activeToolId,
+        expect: expect.trim(),
+      });
+      setQuery("");
+      setExpect("");
+      toast("用例已添加，请再跑一遍");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "添加失败");
     }
-    addEvalCase({
-      query: query.trim(),
-      toolId,
-      expect: expect.trim(),
-      warehouse: needWarehouse ? warehouse.trim() : undefined,
-    });
-    setQuery("");
-    setExpect("");
-    setWarehouse("");
-    toast("用例已添加，请再跑一遍");
   }
 
   return (
@@ -80,36 +69,36 @@ export function EvalPage() {
         <PageHero
           title="评测"
           desc="金标问句绑定工具，按该工具自己的范围和策略跑。未达门禁不要把 MCP 标成 prod。"
-          action={<Button onClick={runAll}>跑一遍</Button>}
+          action={
+            <Button onClick={() => void runAll()} isLoading={running} isDisabled={evalCases.length === 0}>
+              跑一遍
+            </Button>
+          }
         />
         <Panel title="添加用例">
-          <form onSubmit={onAdd} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Input
-              placeholder="问句"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <MySelect
-              w="220px"
-              value={toolId}
-              onChange={setToolId}
-              list={tools.map((t) => ({ label: t.name, value: t.id }))}
-            />
-            {needWarehouse && (
+          {tools.length === 0 ? (
+            <Empty text="还没有检索工具。" to="/tools/new" cta="先做成工具" />
+          ) : (
+            <form onSubmit={(e) => void onAdd(e)} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <Input
-                maxW="140px"
-                placeholder="仓库，如华北"
-                value={warehouse}
-                onChange={(e) => setWarehouse(e.target.value)}
+                placeholder="问句"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
               />
-            )}
-            <Input
-              placeholder="应命中 locator"
-              value={expect}
-              onChange={(e) => setExpect(e.target.value)}
-            />
-            <Button type="submit">添加</Button>
-          </form>
+              <MySelect
+                w="220px"
+                value={activeToolId}
+                onChange={setToolId}
+                list={tools.map((t) => ({ label: t.name, value: t.id }))}
+              />
+              <Input
+                placeholder="应命中 locator 或标题"
+                value={expect}
+                onChange={(e) => setExpect(e.target.value)}
+              />
+              <Button type="submit">添加</Button>
+            </form>
+          )}
         </Panel>
         {evalCases.length === 0 ? (
           <Empty text="没有评测用例。" />
@@ -122,7 +111,6 @@ export function EvalPage() {
                 <tr key={c.id}>
                   <td>
                     {c.query}
-                    {c.warehouse ? <div className="mono">{c.warehouse}</div> : null}
                   </td>
                   <td>
                     {tool ? <Link to={`/tools/${tool.id}`}>{tool.name}</Link> : c.toolId}

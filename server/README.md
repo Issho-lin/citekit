@@ -1,6 +1,6 @@
 # Citekit Server
 
-当前已接 MySQL：模型目录、工作空间默认模型，以及通用知识库的创建、本地文件入库和试搜。向量写入 Qdrant，原文件写入 MinIO。检索工具与 MCP 仍未实现。
+当前已接 MySQL：模型目录、工作空间默认模型，通用知识库的创建、本地文件入库和试搜，以及检索工具、MCP 端点与评测。向量写入 Qdrant，原文件写入 MinIO。MCP 对外地址：`POST /mcp/{endpoint_id}`，请求头 `Authorization: Bearer {apiKey}`。
 
 ## 要求
 

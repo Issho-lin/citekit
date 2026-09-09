@@ -72,6 +72,12 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
     if not chunks:
         return SearchOut(hits=[], message="该知识库还没有可检索的数据。请先导入集合并等待就绪。")
 
+    warehouse = (body.warehouse or "").strip()
+    if warehouse:
+        chunks = [row for row in chunks if warehouse.lower() in _blob(row).lower()]
+        if not chunks:
+            return SearchOut(hits=[], message=f"仓库「{warehouse}」下没有可检索的数据。")
+
     by_id = {row.id: row for row in chunks}
     scored: dict[str, tuple[float, str]] = {}
     mode = body.searchMode or "mix"

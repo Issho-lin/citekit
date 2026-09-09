@@ -342,6 +342,7 @@ class SearchIn(BaseModel):
     similarity: float = 0.2
     limit: int = 20
     usingRerank: bool = False
+    warehouse: str | None = None
 
 
 class SearchHit(BaseModel):
@@ -387,3 +388,143 @@ class ModelCallOut(ModelCallSummary):
 class ModelCallListOut(BaseModel):
     items: list[ModelCallSummary]
     total: int
+
+
+class SearchConfigIn(BaseModel):
+    searchMode: str = "mix"
+    similarity: float = 0.2
+    limit: int = 20
+    usingRerank: bool = False
+    filterFirst: bool = False
+
+
+class ToolOut(BaseModel):
+    id: str
+    name: str
+    title: str
+    description: str
+    kbId: str
+    sourceIds: list[str]
+    search: SearchConfigIn
+    profile: str
+    requiredFilters: list[str]
+
+
+class ToolIn(BaseModel):
+    name: str
+    title: str
+    description: str
+    kbId: str
+    sourceIds: list[str]
+    search: SearchConfigIn = SearchConfigIn()
+
+
+class ToolPatch(BaseModel):
+    name: str | None = None
+    title: str | None = None
+    description: str | None = None
+    sourceIds: list[str] | None = None
+    search: SearchConfigIn | None = None
+
+
+class ToolSearchIn(BaseModel):
+    query: str
+    warehouse: str | None = None
+
+
+class ToolSuggestIn(BaseModel):
+    kbId: str
+    sourceIds: list[str] = []
+    excludeId: str | None = None
+
+
+class ToolSuggestOut(BaseModel):
+    title: str
+    name: str
+    description: str
+
+
+class McpEndpointOut(BaseModel):
+    id: str
+    name: str
+    env: str
+    toolIds: list[str]
+    url: str
+    apiKey: str
+
+
+class McpEndpointIn(BaseModel):
+    name: str
+    env: str = "dev"
+    toolIds: list[str]
+
+
+class McpEndpointPatch(BaseModel):
+    name: str | None = None
+    env: str | None = None
+    toolIds: list[str] | None = None
+
+
+class EvalCaseOut(BaseModel):
+    id: str
+    query: str
+    toolId: str
+    expect: str
+    warehouse: str | None = None
+
+
+class EvalCaseIn(BaseModel):
+    query: str
+    toolId: str
+    expect: str
+    warehouse: str | None = None
+
+
+class EvalRunItem(BaseModel):
+    id: str
+    ok: bool
+    detail: str
+
+
+class EvalRunOut(BaseModel):
+    items: list[EvalRunItem]
+    failed: int
+
+
+class AgentChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class AgentChatIn(BaseModel):
+    messages: list[AgentChatMessage]
+    endpointIds: list[str] = []
+    endpointId: str | None = None  # 兼容旧入参
+    modelId: str | None = None
+
+
+class AgentCitationOut(BaseModel):
+    id: int
+    tool: str
+    title: str
+    locator: str = ""
+    text: str
+    score: float = 0
+    sourceId: str = ""
+
+
+class AgentStepOut(BaseModel):
+    tool: str
+    query: str
+    ok: bool
+    preview: str
+    endpointId: str = ""
+    endpointName: str = ""
+    citations: list[AgentCitationOut] = []
+
+
+class AgentChatOut(BaseModel):
+    answer: str
+    thinking: str = ""
+    steps: list[AgentStepOut] = []
+    citations: list[AgentCitationOut] = []

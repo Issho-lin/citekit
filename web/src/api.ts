@@ -1,4 +1,18 @@
-import type { AiModel, Chunk, KnowledgeBase, ModelCall, ModelCallSummary, ModelProvider, ModelTestResult, ProcessConfig, SearchConfig, Source } from "./types";
+import type {
+  AiModel,
+  Chunk,
+  EvalCase,
+  KnowledgeBase,
+  McpEndpoint,
+  ModelCall,
+  ModelCallSummary,
+  ModelProvider,
+  ModelTestResult,
+  ProcessConfig,
+  RetrievalTool,
+  SearchConfig,
+  Source,
+} from "./types";
 import { encryptSecret } from "./encryptSecret";
 
 export function isPlainSecret(value?: string) {
@@ -173,6 +187,7 @@ export const api = {
       similarity?: number;
       limit?: number;
       usingRerank?: boolean;
+      warehouse?: string;
     },
   ) =>
     request<{ hits: { chunk: Chunk; score: number; note: string }[]; message?: string | null }>(
@@ -203,6 +218,185 @@ export const api = {
   },
   getModelCall: (id: string) => request<ModelCall>(`/api/model-calls/${encodeURIComponent(id)}`),
   clearModelCalls: () => request<{ ok: boolean; deleted: number }>("/api/model-calls", { method: "DELETE" }),
+  listTools: () => request<RetrievalTool[]>("/api/tools"),
+  suggestTool: (body: { kbId: string; sourceIds?: string[]; excludeId?: string }) =>
+    request<{ title: string; name: string; description: string }>("/api/tools/suggest", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  createTool: (body: {
+    name: string;
+    title: string;
+    description: string;
+    kbId: string;
+    sourceIds: string[];
+    search: SearchConfig;
+  }) => request<RetrievalTool>("/api/tools", { method: "POST", body: JSON.stringify(body) }),
+  patchTool: (id: string, patch: Partial<Pick<RetrievalTool, "name" | "title" | "description" | "sourceIds">> & { search?: SearchConfig }) =>
+    request<RetrievalTool>(`/api/tools/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteTool: (id: string) =>
+    request<{ ok: boolean }>(`/api/tools/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  searchTool: (id: string, body: { query: string; warehouse?: string }) =>
+    request<{ hits: { chunk: Chunk; score: number; note: string }[]; message?: string | null }>(
+      `/api/tools/${encodeURIComponent(id)}/search`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  listEndpoints: () => request<McpEndpoint[]>("/api/mcp-endpoints"),
+  createEndpoint: (body: { name: string; env: "dev" | "prod"; toolIds: string[] }) =>
+    request<McpEndpoint>("/api/mcp-endpoints", { method: "POST", body: JSON.stringify(body) }),
+  patchEndpoint: (id: string, patch: Partial<Pick<McpEndpoint, "name" | "env" | "toolIds">>) =>
+    request<McpEndpoint>(`/api/mcp-endpoints/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteEndpoint: (id: string) =>
+    request<{ ok: boolean }>(`/api/mcp-endpoints/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  listEvalCases: () => request<EvalCase[]>("/api/eval-cases"),
+  createEvalCase: (body: { query: string; toolId: string; expect: string; warehouse?: string }) =>
+    request<EvalCase>("/api/eval-cases", { method: "POST", body: JSON.stringify(body) }),
+  runEvalCases: () =>
+    request<{ items: { id: string; ok: boolean; detail: string }[]; failed: number }>("/api/eval-cases/run", {
+      method: "POST",
+    }),
+  mcpRpc: (endpointId: string, apiKey: string, body: unknown) =>
+    request<McpRpc>(`/mcp/${encodeURIComponent(endpointId)}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    }),
+  agentChat: (body: AgentChatBody) =>
+    request<AgentChatResult>("/api/agent/chat", { method: "POST", body: JSON.stringify(body) }),
+  agentChatStream: (body: AgentChatBody, opts: { signal?: AbortSignal; onEvent: (event: AgentStreamEvent) => void }) =>
+    streamAgentChat(body, opts),
+};
+
+export type AgentCitation = {
+  id: number;
+  tool: string;
+  title: string;
+  locator: string;
+  text: string;
+  score: number;
+  sourceId: string;
+};
+
+export type AgentStep = {
+  tool: string;
+  query: string;
+  ok: boolean;
+  preview: string;
+  endpointId?: string;
+  endpointName?: string;
+  citations?: AgentCitation[];
+};
+
+export type AgentChatBody = {
+  messages: { role: "user" | "assistant"; content: string }[];
+  endpointIds: string[];
+  modelId?: string;
+};
+
+export type AgentChatResult = {
+  answer: string;
+  thinking: string;
+  steps: AgentStep[];
+  citations: AgentCitation[];
+};
+
+export type AgentStreamEvent =
+  | { type: "status"; message: string; modelId?: string; modelName?: string; toolCount?: number }
+  | { type: "thinking"; text: string }
+  | {
+      type: "tool_start";
+      id: string;
+      tool: string;
+      query: string;
+      endpointId?: string;
+      endpointName?: string;
+    }
+  | {
+      type: "tool_result";
+      id: string;
+      tool: string;
+      query: string;
+      ok: boolean;
+      preview: string;
+      endpointId?: string;
+      endpointName?: string;
+      citations?: AgentCitation[];
+    }
+  | { type: "token"; text: string }
+  | {
+      type: "done";
+      answer: string;
+      thinking: string;
+      steps: AgentStep[];
+      citations: AgentCitation[];
+    }
+  | { type: "error"; message: string };
+
+async function streamAgentChat(
+  body: AgentChatBody,
+  opts: { signal?: AbortSignal; onEvent: (event: AgentStreamEvent) => void },
+) {
+  const res = await fetch("/api/agent/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const payload = (await res.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string") detail = payload.detail;
+      else if (payload.detail) detail = JSON.stringify(payload.detail);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `请求失败 ${res.status}`);
+  }
+  if (!res.body) throw new Error("浏览器不支持流式响应");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      const lines = chunk.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+        const raw = trimmed.slice(5).trim();
+        if (!raw || raw === "[DONE]") continue;
+        try {
+          opts.onEvent(JSON.parse(raw) as AgentStreamEvent);
+        } catch {
+          /* ignore malformed */
+        }
+      }
+    }
+  }
+}
+
+export type McpRpc = {
+  jsonrpc?: string;
+  id?: number | string;
+  result?: {
+    protocolVersion?: string;
+    tools?: { name: string; description?: string }[];
+    content?: { type: string; text?: string }[];
+    isError?: boolean;
+    serverInfo?: { name: string; version: string };
+  };
+  error?: { code: number; message: string };
 };
 
 function uploadFile<T>(
