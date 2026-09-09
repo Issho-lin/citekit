@@ -3604,11 +3604,12 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 20px 4px 12px;
+  padding: 20px 16px 12px 4px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 .chat-empty {
@@ -3690,7 +3691,7 @@ body {
 }
 
 .chat-msg.assistant {
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 .chat-user-bubble {
@@ -3709,7 +3710,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-width: 100%;
+  max-width: min(92%, 640px);
+  width: 100%;
 }
 
 .chat-thinking {
@@ -3870,17 +3872,26 @@ body {
 }
 
 .chat-answer {
-  font-size: 15px;
-  line-height: 1.75;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: 14px 14px 14px 4px;
+  background: #eef2f7;
+  border: none;
   color: #111824;
+  font-size: 14px;
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
-  max-width: 68ch;
+}
+
+.chat-answer.is-streaming {
+  background: #e8eef8;
 }
 
 .chat-answer.is-empty {
   color: #86909c;
-  font-size: 14px;
+  background: #f2f4f8;
 }
 
 .chat-answer-text {
@@ -4061,7 +4072,7 @@ body {
   }
 
   .chat-answer {
-    max-width: none;
+    max-width: 100%;
     font-size: 14px;
   }
 }
