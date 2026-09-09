@@ -123,7 +123,7 @@ export function ToolDetailPage() {
         <Tabs>
           <TabList>
             <Tab>配置</Tab>
-            <Tab>试检索</Tab>
+            <Tab>检索策略</Tab>
             <Tab>发布</Tab>
           </TabList>
           <TabPanels>
@@ -152,7 +152,7 @@ export function ToolDetailPage() {
                   <p className="page-desc" style={{ marginTop: 12 }}>
                     当前策略：{modeLabel} · 相似度 {search.similarity} · 上限 {search.limit}
                     {search.usingRerank ? " · 重排" : ""}
-                    。在「试检索」里改会立即写入这把工具。
+                    。在「检索策略」里改会立即写入这把工具。
                   </p>
                 </Panel>
               </Box>

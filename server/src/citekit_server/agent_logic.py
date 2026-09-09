@@ -18,13 +18,11 @@ from citekit_server.schemas import (
     AgentStepOut,
     SearchOut,
 )
-from citekit_server.tools_logic import mcp_tool_list_item, search_tool
+from citekit_server.tools_logic import format_hits, mcp_tool_list_item, search_tool
 from citekit_server.upstream import chat_messages
 
 MAX_ROUNDS = 6
 MAX_HISTORY = 24
-MAX_TOOL_CHARS = 6000
-MAX_CITATION_CHARS = 360
 ANSWER_CHUNK = 24
 
 SYSTEM = """你是 Citekit 知识库助手，基于用户勾选的 MCP 检索工具回答。
@@ -32,10 +30,19 @@ SYSTEM = """你是 Citekit 知识库助手，基于用户勾选的 MCP 检索工
 1. 只能通过提供的检索工具查知识库，不要用训练知识编造条文或事实。
 2. 根据工具描述选择最合适的一把或多把；相关主题可并行调用。
 3. 工具参数 query 必须是独立完整问句，不要把多轮指代丢给检索。
-4. 检索无命中就明确说没查到，并说明可能搜错了工具或问法；不要反复无意义改写同一问句超过两次。
-5. 有命中时用自己的话回答，并在相关句子后标注引用编号，例如 [1][2]，编号必须与工具返回中的编号一致。
-6. 不要原样粘贴整段检索结果；回答末尾不要再列参考文献清单。
+4. 检索无命中就明确说没查到；不要反复无意义改写同一问句超过两次。
+5. 回答结构：先用一两句直接回应用户问题，再补充必要要点；控制在简洁可读的篇幅。
+6. 用自己的话概括，禁止整段照抄检索原文。
+7. 引用编号与工具返回条目序号一致，写成 [1] 或 [1][2]，紧跟相关句子；不要写成「业主1」这种无括号形式。
+8. 只标注真正用到的编号；回答末尾不要再列参考文献清单。
 """
+
+RECOVER = (
+    "请只根据上面工具返回的检索结果作答。"
+    "先用一两句直接回答用户问题，再用自己的话概括要点，不要整段照抄原文列表。"
+    "引用必须写成 [1][2] 这种方括号形式，编号与工具返回条目序号一致。"
+    "不要再调用工具，不要输出思考标签。"
+)
 
 
 def _resolve_endpoint_ids(body: AgentChatIn) -> list[str]:
@@ -148,58 +155,28 @@ def _parse_args(raw: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {"query": str(data)}
 
 
-def _excerpt(text: str, limit: int = MAX_CITATION_CHARS) -> str:
-    compact = re.sub(r"\s+", " ", (text or "").strip())
-    if len(compact) <= limit:
-        return compact
-    return compact[: limit - 1] + "…"
-
-
 def _citations_from_search(
     out: SearchOut,
     *,
     tool_name: str,
-    start_id: int,
-) -> tuple[list[AgentCitationOut], int]:
+) -> list[AgentCitationOut]:
+    """UI 引用用；正文与编号对齐 MCP format_hits（从 1 起）。不做截断。"""
     citations: list[AgentCitationOut] = []
-    next_id = start_id
-    for hit in out.hits:
+    for index, hit in enumerate(out.hits, start=1):
         chunk = hit.chunk
         body = chunk.a.strip() if chunk.a else chunk.text
         citations.append(
             AgentCitationOut(
-                id=next_id,
+                id=index,
                 tool=tool_name,
                 title=chunk.title or "未命名片段",
                 locator=chunk.locator or "",
-                text=_excerpt(body),
+                text=(body or "").strip(),
                 score=float(hit.score or 0),
                 sourceId=chunk.sourceId or "",
             )
         )
-        next_id += 1
-    return citations, next_id
-
-
-def _format_hits_for_model(out: SearchOut, citations: list[AgentCitationOut]) -> str:
-    if out.message and not out.hits:
-        return out.message
-    lines: list[str] = []
-    if out.message:
-        lines.append(out.message)
-    for item in citations:
-        head = f"[{item.id}] {item.title}"
-        if item.score:
-            head += f"（相关度 {item.score:.2f}）"
-        lines.append(head)
-        lines.append(item.text)
-        if item.locator:
-            lines.append(f"定位：{item.locator}")
-        lines.append("")
-    text = "\n".join(lines).strip() or "无命中。"
-    if len(text) > MAX_TOOL_CHARS:
-        text = text[:MAX_TOOL_CHARS] + "\n…（已截断）"
-    return text
+    return citations
 
 
 def _split_thinking(content: str, reasoning: str) -> tuple[str, str]:
@@ -211,6 +188,10 @@ def _split_thinking(content: str, reasoning: str) -> tuple[str, str]:
         text = (text[: match.start()] + text[match.end() :]).strip()
     text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.I).strip()
     return text, think
+
+
+def _has_retrieval_hits(steps: list[AgentStepOut]) -> bool:
+    return any(step.ok and (step.preview or "").strip() and step.preview.strip() != "无命中。" for step in steps)
 
 
 def _chunk_text(text: str, size: int = ANSWER_CHUNK) -> Iterator[str]:
@@ -246,7 +227,6 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
     openai_tools = _openai_tools(pairs)
     steps: list[AgentStepOut] = []
     all_citations: list[AgentCitationOut] = []
-    next_cite_id = 1
     thinking_parts: list[str] = []
     kb_id = tools[0].kb_id if tools else None
 
@@ -260,8 +240,10 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
 
     try:
         for round_index in range(MAX_ROUNDS):
-            force_answer = round_index == MAX_ROUNDS - 1
-            yield _event("status", message="正在思考…" if force_answer else "正在选择工具…")
+            has_hits = _has_retrieval_hits(steps)
+            # 已有命中后尽快收口，避免空转改写；最后一轮强制作答
+            force_answer = round_index >= MAX_ROUNDS - 1 or (has_hits and round_index >= 2)
+            yield _event("status", message="正在整理回答…" if force_answer else "正在选择工具…")
             with call_scope(purpose="agent", kb_id=kb_id):
                 reply = chat_messages(
                     model,
@@ -271,7 +253,8 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
                     tool_choice="none" if force_answer else "auto",
                     max_tokens=1600,
                     timeout=90,
-                    thinking=True,
+                    # 收口轮关闭 thinking，避免模型只吐推理不写正文
+                    thinking=not force_answer,
                 )
             calls = reply["tool_calls"] if not force_answer else []
             content, think = _split_thinking(reply.get("content") or "", reply.get("reasoning") or "")
@@ -280,10 +263,35 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
                 yield _event("thinking", text=think)
 
             if not calls:
-                answer = content or ("工具调用次数已达上限，请根据已有检索结果作答。" if force_answer else "模型没有给出回答。")
-                if force_answer and not content and steps:
-                    # 再强制一轮纯文本（已在本轮 tool_choice=none）；若仍空则拼兜底
-                    answer = content or "根据已检索到的内容，我暂时无法整理出完整答案。请换一种问法，或检查工具命中。"
+                answer = content.strip()
+                # 有检索命中但正文为空：再补一轮强制作答（常见于思考模型）
+                if not answer and _has_retrieval_hits(steps):
+                    yield _event("status", message="正在根据检索结果整理回答…")
+                    recover_history = [*history, {"role": "user", "content": RECOVER}]
+                    with call_scope(purpose="agent", kb_id=kb_id):
+                        recover = chat_messages(
+                            model,
+                            auth,
+                            recover_history,
+                            tools=None,
+                            max_tokens=1600,
+                            timeout=90,
+                            thinking=False,
+                        )
+                    answer, recover_think = _split_thinking(
+                        recover.get("content") or "", recover.get("reasoning") or ""
+                    )
+                    if recover_think:
+                        thinking_parts.append(recover_think)
+                        yield _event("thinking", text=recover_think)
+                    answer = answer.strip()
+                if not answer:
+                    if _has_retrieval_hits(steps):
+                        answer = "检索已有命中，但模型未能整理成回答。请重试，或换一个文本理解模型。"
+                    elif steps:
+                        answer = "检索未找到足够相关的内容。请换一种问法，或检查所选 MCP / 工具范围。"
+                    else:
+                        answer = "模型没有给出回答。"
                 for piece in _chunk_text(answer):
                     yield _event("token", text=piece)
                 yield _event(
@@ -332,10 +340,9 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
                     citations = []
                 else:
                     out = search_tool(db, tool, query, warehouse)
-                    citations, next_cite_id = _citations_from_search(
-                        out, tool_name=name, start_id=next_cite_id
-                    )
-                    preview = _format_hits_for_model(out, citations)
+                    # 与 MCP tools/call 一致：原样返回 format_hits，不做 Agent 层截断/改写
+                    preview = format_hits(out)
+                    citations = _citations_from_search(out, tool_name=name)
                     is_error = bool(out.message and not out.hits)
                     all_citations.extend(citations)
 
@@ -369,7 +376,6 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
                     }
                 )
 
-        # 理论上不会到这里：最后一轮 force_answer 已 return
         yield _event(
             "done",
             answer="对话中断，请重试。",

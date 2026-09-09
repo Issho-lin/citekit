@@ -9,6 +9,11 @@ import {
   MenuButton,
   MenuItem,
   MenuList,
+  Popover,
+  PopoverBody,
+  PopoverContent,
+  PopoverTrigger,
+  Portal,
 } from "@chakra-ui/react";
 import { api, type AgentCitation, type AgentStep, type AgentStreamEvent } from "../api";
 import { ProviderAvatar } from "../components/model/shared";
@@ -51,19 +56,52 @@ function loadEndpointIds(fallback: string[]): string[] {
   return fallback;
 }
 
+function CiteChip({ cite }: { cite: AgentCitation }) {
+  return (
+    <Popover trigger="hover" placement="top" openDelay={120} closeDelay={80} isLazy gutter={8}>
+      <PopoverTrigger>
+        <button type="button" className="chat-cite-chip" aria-label={`引用 ${cite.id}：${cite.title}`}>
+          {cite.id}
+        </button>
+      </PopoverTrigger>
+      <Portal>
+        <PopoverContent
+          className="chat-cite-pop"
+          w="min(360px, 86vw)"
+          maxW="86vw"
+          border="1px solid #e8ebf0"
+          borderRadius="10px"
+          boxShadow="0 8px 24px rgba(19, 51, 107, 0.12)"
+          _focus={{ outline: "none" }}
+        >
+          <PopoverBody p={3}>
+            <div className="chat-cite-pop-head">
+              <span className="chat-cite-pop-index">{cite.id}</span>
+              <strong>{cite.title}</strong>
+            </div>
+            {cite.locator ? <div className="chat-cite-pop-loc">{cite.locator}</div> : null}
+            <div className="chat-cite-pop-text">{cite.text}</div>
+            <div className="chat-cite-pop-meta">
+              {cite.tool}
+              {cite.score ? ` · 相关度 ${cite.score.toFixed(2)}` : ""}
+            </div>
+          </PopoverBody>
+        </PopoverContent>
+      </Portal>
+    </Popover>
+  );
+}
+
 function AnswerBody({
   text,
   citations,
   streaming,
-  activeCite,
-  onCite,
 }: {
   text: string;
   citations: AgentCitation[];
   streaming?: boolean;
-  activeCite?: number | null;
-  onCite: (id: number) => void;
 }) {
+  const byId = new Map(citations.map((item) => [item.id, item]));
   const parts = text.split(/(\[\d+\])/g);
   return (
     <div className={`chat-answer${streaming ? " is-streaming" : ""}`}>
@@ -76,20 +114,9 @@ function AnswerBody({
             </span>
           );
         }
-        const id = Number(match[1]);
-        const exists = citations.some((item) => item.id === id);
-        if (!exists) return <span key={index}>{part}</span>;
-        return (
-          <button
-            key={index}
-            type="button"
-            className={`chat-cite-chip${activeCite === id ? " is-on" : ""}`}
-            onClick={() => onCite(id)}
-            aria-label={`查看引用 ${id}`}
-          >
-            {id}
-          </button>
-        );
+        const cite = byId.get(Number(match[1]));
+        if (!cite) return <span key={index}>{part}</span>;
+        return <CiteChip key={index} cite={cite} />;
       })}
       {streaming ? <span className="chat-caret" aria-hidden /> : null}
     </div>
@@ -264,7 +291,7 @@ function McpMultiSelect({
         title="配置 MCP 端点"
       >
         <Flex align="center" gap={1.5} minW={0}>
-          <Box color="myGray.500" display="grid" placeItems="center" flexShrink={0}>
+          <Box color="#12b76a" display="grid" placeItems="center" flexShrink={0}>
             <IconLink size={14} />
           </Box>
           <Box as="span" noOfLines={1}>
@@ -389,7 +416,6 @@ export function AgentPage() {
   const [query, setQuery] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeCite, setActiveCite] = useState<number | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -556,7 +582,6 @@ export function AgentPage() {
     ]);
     setQuery("");
     setLoading(true);
-    setActiveCite(null);
     const controller = new AbortController();
     abortRef.current = controller;
     try {
@@ -612,7 +637,6 @@ export function AgentPage() {
   function clearChat() {
     if (loading) stop();
     setTurns([]);
-    setActiveCite(null);
   }
 
   if (!kbsReady) {
@@ -701,33 +725,10 @@ export function AgentPage() {
                         text={turn.content}
                         citations={turn.citations ?? []}
                         streaming={turn.streaming}
-                        activeCite={activeCite}
-                        onCite={setActiveCite}
                       />
                     ) : turn.streaming ? null : (
                       <div className="chat-answer is-empty">没有生成回答</div>
                     )}
-
-                    {turn.citations && turn.citations.length > 0 && !turn.streaming ? (
-                      <div className="chat-cites">
-                        <div className="chat-cites-title">引用</div>
-                        {turn.citations.map((cite) => (
-                          <button
-                            key={cite.id}
-                            type="button"
-                            className={`chat-cite-card${activeCite === cite.id ? " is-on" : ""}`}
-                            onClick={() => setActiveCite(cite.id === activeCite ? null : cite.id)}
-                          >
-                            <span className="chat-cite-index">{cite.id}</span>
-                            <span className="chat-cite-body">
-                              <strong>{cite.title}</strong>
-                              {cite.locator ? <em>{cite.locator}</em> : null}
-                              <span>{cite.text}</span>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
                 )}
               </article>
