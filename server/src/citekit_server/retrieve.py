@@ -123,10 +123,13 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
                 with call_scope(purpose="rerank", kb_id=kb.id):
                     scores = rerank_texts(rerank_row, resolve_auth(db, rerank_row), query, docs)
                 ranked = [
-                    (cid, float(scores[i]), "混合召回后重排")
-                    for i, (cid, _, _) in enumerate(pool)
+                    (pool[i][0], pool[i][1], "混合召回后重排")
+                    for i in sorted(
+                        range(len(pool)),
+                        key=lambda i: float(scores[i]),
+                        reverse=True,
+                    )
                 ]
-                ranked.sort(key=lambda item: item[1], reverse=True)
             except Exception:
                 pass
 

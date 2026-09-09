@@ -7,11 +7,12 @@ import {
   ModalBody,
   ModalCloseButton,
   ModalContent,
+  ModalFooter,
   ModalHeader,
   ModalOverlay,
   Textarea,
 } from "@chakra-ui/react";
-import { IconPlus, IconRightArrow, IconTrash } from "./icons";
+import { IconPlus, IconTrash } from "./icons";
 import { useToast } from "./Toast";
 import type { Chunk, ChunkIndex } from "../types";
 
@@ -106,7 +107,8 @@ export function InputDataModal({
     setSaving(true);
     try {
       await onSave({ q: q.trim(), a: tab === "qa" ? a.trim() : "", indexes: nextIndexes });
-      toast(isInsert ? "导入数据成功" : "更新数据成功");
+      toast(isInsert ? "导入数据成功" : "已保存");
+      onClose();
     } catch (err) {
       toast(err instanceof Error ? err.message : "更新失败");
     } finally {
@@ -141,7 +143,7 @@ export function InputDataModal({
           </Box>
         </ModalHeader>
         <ModalCloseButton />
-        <ModalBody px={6} pt={6} pb={6} display="flex" flexDir="column" minH={0}>
+        <ModalBody px={6} pt={6} pb={4} display="flex" flexDir="column" minH={0}>
           <Flex flexDir="column" gap="24px" flex="1" minH={0}>
             <Flex h="32px" gap="16px" borderBottom="1px solid" borderColor="myGray.200" flexShrink={0}>
               {(
@@ -195,24 +197,6 @@ export function InputDataModal({
                     />
                   </Flex>
                 )}
-                <Button
-                  h="32px"
-                  minH="32px"
-                  w="100%"
-                  bg="myGray.150"
-                  color="primary.700"
-                  borderRadius="6px"
-                  fontSize="12px"
-                  lineHeight="16px"
-                  fontWeight={500}
-                  letterSpacing="0.5px"
-                  isLoading={saving}
-                  _hover={{ bg: "myGray.200" }}
-                  rightIcon={<IconRightArrow />}
-                  onClick={() => void submit()}
-                >
-                  更新索引
-                </Button>
               </Flex>
 
               <Flex flexDir="column" flex="1 0 0" w={["100%", 0]} minH={0}>
@@ -303,6 +287,17 @@ export function InputDataModal({
             </Flex>
           </Flex>
         </ModalBody>
+        <ModalFooter px={6} pt={0} pb={5} gap={3}>
+          <Box flex="1" fontSize="xs" color="myGray.400" textAlign="left">
+            保存会写入正文，并按右侧索引重新向量化
+          </Box>
+          <Button variant="whiteBase" onClick={onClose} isDisabled={saving}>
+            取消
+          </Button>
+          <Button onClick={() => void submit()} isLoading={saving}>
+            保存
+          </Button>
+        </ModalFooter>
       </ModalContent>
     </Modal>
   );

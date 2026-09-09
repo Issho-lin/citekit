@@ -176,11 +176,15 @@ export function PreviewData() {
                     </StatChip>
                   ) : null}
                   {result.indexCount > 0 ? <StatChip>{result.indexCount} 条额外索引</StatChip> : null}
-                  <StatChip warn={result.oversize > 0}>
-                    {result.oversize > 0
-                      ? `${result.oversize} 块超过 ${result.chunkSize} 字`
-                      : `均未超过 ${result.chunkSize} 字`}
-                  </StatChip>
+                  {result.chunkSize > 0 ? (
+                    <StatChip warn={result.oversize > 0}>
+                      {result.oversize > 0
+                        ? `${result.oversize} 块超过 ${result.chunkSize} 字`
+                        : `均未超过 ${result.chunkSize} 字`}
+                    </StatChip>
+                  ) : (
+                    <StatChip>未限制父块大小</StatChip>
+                  )}
                 </HStack>
                 {result.notes.length > 0 ? (
                   <Box
@@ -236,7 +240,13 @@ export function PreviewData() {
                           <Box color="primary.600" fontWeight={500}>
                             #{index + 1}
                           </Box>
-                          <Box color={item.chars > result.chunkSize ? "orange.600" : "myGray.500"}>
+                          <Box
+                            color={
+                              result.chunkSize > 0 && item.chars > result.chunkSize
+                                ? "orange.600"
+                                : "myGray.500"
+                            }
+                          >
                             {item.chars} 字
                           </Box>
                         </Flex>

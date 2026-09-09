@@ -34,9 +34,17 @@ def ensure_collection(kb_id: str, dim: int) -> None:
     q.create_collection(name, vectors_config=VectorParams(size=dim, distance=Distance.COSINE))
 
 
+UPSERT_BATCH = 64
+
+
 def upsert_points(kb_id: str, dim: int, points: list[PointStruct]) -> None:
+    if not points:
+        return
     ensure_collection(kb_id, dim)
-    client().upsert(collection_name=collection_name(kb_id), points=points)
+    q = client()
+    name = collection_name(kb_id)
+    for i in range(0, len(points), UPSERT_BATCH):
+        q.upsert(collection_name=name, points=points[i : i + UPSERT_BATCH])
 
 
 def delete_source_points(kb_id: str, source_id: str) -> None:

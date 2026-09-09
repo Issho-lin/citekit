@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Alert, Button, Input, Switch } from "@chakra-ui/react";
 import { SEARCH_MODES } from "../constants";
 import { retrieve, type Hit } from "../mock/retrieve";
@@ -149,14 +149,20 @@ export function RetrievePlay({
   const [message, setMessage] = useState<string | undefined>();
   const [ran, setRan] = useState(false);
   const [loading, setLoading] = useState(false);
-  const filterFirst = search?.filterFirst || profile === "filter_first";
+  const [localSearch, setLocalSearch] = useState(search);
+  const activeSearch = localSearch ?? search;
+  const filterFirst = activeSearch?.filterFirst || profile === "filter_first";
+
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
 
   async function onSearch(e: FormEvent) {
     e.preventDefault();
     setLoading(true);
     try {
       const result = onRetrieve
-        ? await onRetrieve({ query, sourceIds, search })
+        ? await onRetrieve({ query, sourceIds, search: activeSearch })
         : retrieve(
             {
               sliceId,
@@ -164,7 +170,7 @@ export function RetrievePlay({
               sourceIds,
               query,
               profile: filterFirst ? "filter_first" : profile,
-              search,
+              search: activeSearch,
               warehouse: filterFirst ? warehouse : undefined,
             },
             chunks,
@@ -183,8 +189,15 @@ export function RetrievePlay({
 
   return (
     <div>
-      {search && onSearchChange && (
-        <SearchParamsFields search={search} onChange={onSearchChange} showFilterFirst={showFilterFirst} />
+      {activeSearch && onSearchChange && (
+        <SearchParamsFields
+          search={activeSearch}
+          onChange={(next) => {
+            setLocalSearch(next);
+            onSearchChange(next);
+          }}
+          showFilterFirst={showFilterFirst}
+        />
       )}
       <form onSubmit={onSearch} className="search-bar">
         <IconSearch />

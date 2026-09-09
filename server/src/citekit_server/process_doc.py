@@ -42,6 +42,8 @@ class ProcessResult:
     units: list[Unit]
     applied: str
     notes: list[str] = field(default_factory=list)
+    chunk_total: int = 0
+    chunk_lengths: list[int] = field(default_factory=list)
 
 
 def run_process(
@@ -63,14 +65,22 @@ def run_process(
         body = _append_image_captions(body, parsed.images, preview, vlm, notes, filename)
     if not body:
         notes.append("没有解析出文字。检查文件是否为空，或格式是否支持。")
-        return ProcessResult(parsed_text="", units=[], applied=describe_process(cfg), notes=notes)
+        return ProcessResult(
+            parsed_text="",
+            units=[],
+            applied=describe_process(cfg),
+            notes=notes,
+        )
 
     if filename.lower().endswith(".pdf") and not cfg.pdfEnhance and len(body) < 200:
         notes.append("PDF 抽出的文字很少。扫描件请打开「PDF 增强解析」。")
 
     ai_parts = _ai_paragraphs(body, cfg, preview, llm, notes)
     parents = split_parents(body, cfg, llm_max_context=llm_max_context, ai_parts=ai_parts)
-    if preview:
+    chunk_lengths = [len(part) for part in parents]
+    chunk_total = len(parents)
+    if preview and chunk_total > 50:
+        notes.append(f"共 {chunk_total} 个分块，预览只展示前 50 个。")
         parents = parents[:50]
 
     units: list[Unit] = []
@@ -85,7 +95,14 @@ def run_process(
             units.append(unit)
         _auto_indexes(units, cfg, preview, llm, notes)
 
-    return ProcessResult(parsed_text=body, units=units, applied=describe_process(cfg), notes=notes)
+    return ProcessResult(
+        parsed_text=body,
+        units=units,
+        applied=describe_process(cfg),
+        notes=notes,
+        chunk_total=chunk_total,
+        chunk_lengths=chunk_lengths,
+    )
 
 
 def embed_items(unit: Unit, source_title: str, prefix_title: bool) -> list[tuple[str, str]]:

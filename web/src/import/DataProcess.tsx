@@ -32,11 +32,11 @@ import { useDatasetImportOptional } from "./Context";
 const PARENT_CHUNK_TIP =
   "父块：原文按规则切开后存入知识库的完整段落，检索命中后交给模型阅读。建议大于「索引大小」。";
 const PARENT_CHUNK_MAX_TIP =
-  "父块上限：优先按标题切段，某一段仍超过该长度时再切开。切开后的每块完整入库，命中后给模型阅读。建议大于「索引大小」。";
+  "有上限时：先按标题切段，相邻短段拼到这个字数，单段超长再按句子切。不限制时：只按标题/段落切开，一条标题就是一块父块，不再按字数拆开。";
 const CHILD_INDEX_TIP =
-  "子块：把每个父块再按该长度切开并向量化，用来检索。搜中子块后返回对应的整段父块。一般应小于或等于分块大小。";
+  "子块：把每个父块再按该长度切开并向量化，用来检索。搜中子块后返回对应的整段父块。有父块上限时应小于或等于该上限。";
 const PARAGRAPH_DEPTH_TIP =
-  "按标题切时，切到第几级为止。1 只切最粗的标题（标题 1、第 X 章），2 再切标题 2 / 第 X 节，3 再切标题 3 / 第 X 条。默认 5 表示一到五级都切。更深的标题不单独断开，留在上一级下面。";
+  "按标题切时，切到第几级为止。1 只切最粗的标题（标题 1、第 X 章），2 再切标题 2 / 第 X 节，3 再切标题 3 / 第 X 条，4 再切「一、」「1、」这类条目。默认 5。更深的标题不单独断开，留在上一级下面。";
 
 export function DataProcess({
   process: processProp,
@@ -564,13 +564,23 @@ function ChunkSettings({
                     </Box>
                     <Box mt={2} fontSize="sm">
                       <FieldLabel tip={PARENT_CHUNK_MAX_TIP}>最大分块大小（父块）</FieldLabel>
-                      <IntInput
-                        min={100}
-                        max={3000}
-                        step={100}
-                        value={value.chunkSize}
-                        onChange={(n) => patch({ chunkSize: n })}
-                      />
+                      <Checkbox
+                        isChecked={value.chunkSize <= 0}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => patch({ chunkSize: e.target.checked ? 0 : 1000 })}
+                        mb={2}
+                      >
+                        <Box fontSize="sm">不限制大小，仅按标题/段落切开</Box>
+                      </Checkbox>
+                      {value.chunkSize > 0 ? (
+                        <IntInput
+                          min={100}
+                          max={3000}
+                          step={100}
+                          value={value.chunkSize}
+                          onChange={(n) => patch({ chunkSize: n })}
+                        />
+                      ) : null}
                     </Box>
                   </>
                 )}

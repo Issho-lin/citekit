@@ -164,9 +164,9 @@ def build_preview_from_kb(
 
 
 def _preview_out(result: ProcessResult, cfg: ProcessConfigIn, title: str) -> PreviewOut:
+    lengths = result.chunk_lengths or [len(unit.text) + len(unit.answer) for unit in result.units]
     size, _ = process_size(cfg)
     units = result.units[:CHUNK_PREVIEW]
-    lengths = [len(unit.text) + len(unit.answer) for unit in result.units]
     chunks = [
         PreviewChunk(
             title=unit.title or f"{title} · 块 {index}",
@@ -179,7 +179,7 @@ def _preview_out(result: ProcessResult, cfg: ProcessConfigIn, title: str) -> Pre
     ]
     return PreviewOut(
         chunks=chunks,
-        total=len(result.units),
+        total=result.chunk_total or len(result.units),
         shown=len(chunks),
         parsedText=result.parsed_text[:PARSED_PREVIEW],
         parsedTruncated=len(result.parsed_text) > PARSED_PREVIEW,
@@ -189,7 +189,7 @@ def _preview_out(result: ProcessResult, cfg: ProcessConfigIn, title: str) -> Pre
         minChars=min(lengths) if lengths else 0,
         maxChars=max(lengths) if lengths else 0,
         avgChars=round(sum(lengths) / len(lengths)) if lengths else 0,
-        oversize=sum(1 for n in lengths if n > size),
+        oversize=sum(1 for n in lengths if size > 0 and n > size),
         chunkSize=size,
         indexCount=sum(len(unit.indexes) for unit in result.units),
     )
@@ -235,12 +235,10 @@ def ingest_source(source_id: str) -> None:
         meta: list[tuple[str, str]] = []
         units_with_id: list[tuple[str, Unit]] = []
         titles: dict[str, str] = {}
-        bodies: dict[str, str] = {}
         for unit in result.units:
             chunk_id = new_uuid()
             units_with_id.append((chunk_id, unit))
             titles[chunk_id] = unit.title
-            bodies[chunk_id] = unit.text
             for kind, text in embed_items(unit, source.title, cfg.indexPrefixTitle):
                 texts.append(text)
                 meta.append((chunk_id, kind))
@@ -281,8 +279,7 @@ def ingest_source(source_id: str) -> None:
                         "source_id": source.id,
                         "chunk_id": chunk_id,
                         "index_type": kind,
-                        "title": titles[chunk_id],
-                        "text": bodies[chunk_id],
+                        "title": titles[chunk_id][:80],
                     },
                 )
             )
@@ -334,8 +331,7 @@ def reindex_chunk(db: Session, row: ChunkRow) -> None:
                 "source_id": source.id,
                 "chunk_id": row.id,
                 "index_type": kind,
-                "title": row.title,
-                "text": row.text,
+                "title": (row.title or "")[:80],
             },
         )
         for (kind, _), vector in zip(items, vectors, strict=True)

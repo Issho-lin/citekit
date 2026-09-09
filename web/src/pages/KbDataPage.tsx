@@ -262,7 +262,8 @@ export function KbDataPage() {
                       <span className="data-chunk-index">#{index + 1}</span>
                       <span
                         className={
-                          (c.text + (c.a || "")).length > process.chunkSize
+                          (process.chunkSize > 0 &&
+                            (c.text + (c.a || "")).length > process.chunkSize)
                             ? "data-chunk-chars data-chunk-chars-warn"
                             : "data-chunk-chars"
                         }

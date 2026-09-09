@@ -21,7 +21,7 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
     { label: "将标题加入索引", value: yesNo(process.indexPrefixTitle) },
     { label: "自动生成补充索引", value: yesNo(process.autoIndexes) },
     { label: "图片自动索引", value: yesNo(process.imageIndex) },
-    { label: "分块大小", value: String(process.chunkSize) },
+    { label: "分块大小", value: process.chunkSize > 0 ? String(process.chunkSize) : "不限制" },
     { label: "索引大小", value: String(process.indexSize) },
   ];
 
