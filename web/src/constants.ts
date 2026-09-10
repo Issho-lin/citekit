@@ -41,6 +41,7 @@ export const DEFAULT_PROCESS: ProcessConfig = {
   chunkOverlap: 0,
   qaEnhance: false,
   customSplit: "",
+  useChildIndex: false,
 };
 
 export function fillProcess(partial: Partial<ProcessConfig> = {}): ProcessConfig {
@@ -51,13 +52,15 @@ export function fillProcess(partial: Partial<ProcessConfig> = {}): ProcessConfig
   }
   next.qaEnhance = next.trainingType === "qa";
   next.customSplit = next.chunkSplitter;
+  if (!("useChildIndex" in partial) && "chunkSettingMode" in partial) {
+    next.useChildIndex = next.chunkSettingMode === "custom" && next.trainingType !== "qa";
+  }
   return next;
 }
 
 export const INDEX_SIZES = [128, 256, 512, 1024, 2048];
 
 export const SPLIT_SIGNS: { label: string; value: string }[] = [
-  { label: "不设置", value: "" },
   { label: "1 个换行符", value: "\\n" },
   { label: "2 个换行符", value: "\\n\\n" },
   { label: "句号", value: ".|。" },

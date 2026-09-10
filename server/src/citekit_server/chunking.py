@@ -34,7 +34,12 @@ def process_size(cfg: ProcessConfigIn | None = None) -> tuple[int, int]:
 def index_size_of(cfg: ProcessConfigIn | None = None) -> int:
     data = cfg or ProcessConfigIn()
     size, _ = process_size(data)
-    if data.chunkSettingMode != "custom" or data.trainingType != "chunk":
+    if (
+        data.trainingType == "qa"
+        or data.qaEnhance
+        or data.chunkSettingMode != "custom"
+        or not data.useChildIndex
+    ):
         return size
     child = int(data.indexSize or 512)
     if size <= 0:
@@ -95,6 +100,14 @@ def split_parents(
     llm_max_context: int | None = None,
     ai_parts: list[str] | None = None,
 ) -> list[str]:
+    """Cut the document into parent chunks.
+
+    Shared: trigger (whether to split at all) and QA windowing.
+    Then one of three strategies owns the rest — they do not share a pack/fit pipeline:
+    - paragraph: headings / blank lines / model parts, then cap or pack
+    - size: sliding windows of chunkSize
+    - char: split on delimiters, then cap oversized pieces
+    """
     body = (text or "").strip()
     if not body:
         return []
@@ -106,11 +119,37 @@ def split_parents(
     if cfg.trainingType == "qa" or cfg.qaEnhance:
         window = size or 8000
         return _window(body, window, min(overlap or 200, window // 4))
-    if cfg.chunkSettingMode == "custom" and cfg.chunkSplitMode == "size":
-        return _window(body, size or 1000, overlap)
+    mode = cfg.chunkSplitMode if cfg.chunkSettingMode == "custom" else "paragraph"
+    if mode == "size":
+        return _split_by_size(body, size, overlap)
+    if mode == "char":
+        return _split_by_delimiter(body, cfg, size, overlap=0)
+    return _split_by_paragraph(body, cfg, size, 0, ai_parts)
+
+
+def _split_by_size(body: str, size: int, overlap: int) -> list[str]:
+    return _window(body, size or 1000, overlap)
+
+
+def _split_by_delimiter(body: str, cfg: ProcessConfigIn, size: int, overlap: int) -> list[str]:
+    spec = cfg.chunkSplitter or cfg.customSplit or "\n"
+    parts = _split_by_signs(body, spec)
+    return _fit_parts(parts, size, overlap) or [body]
+
+
+def _split_by_paragraph(
+    body: str,
+    cfg: ProcessConfigIn,
+    size: int,
+    overlap: int,
+    ai_parts: list[str] | None,
+) -> list[str]:
     parts = _paragraph_parts(body, cfg, ai_parts)
     if size <= 0:
         return parts or [body]
+    deep = int(cfg.paragraphChunkDeep or 5) if cfg.chunkSettingMode == "custom" else 5
+    if ai_parts or has_heading(body, deep):
+        return _fit_parts(parts, size, overlap) or [body]
     return _pack(parts, size, overlap) or [body]
 
 
@@ -118,9 +157,9 @@ def child_indexes(parent: str, cfg: ProcessConfigIn | None = None) -> list[str]:
     data = cfg or ProcessConfigIn()
     if data.trainingType == "qa" or data.qaEnhance:
         return []
-    if data.chunkSettingMode != "custom":
+    if data.chunkSettingMode != "custom" or not data.useChildIndex:
         return []
-    size, overlap = process_size(data)
+    size, _overlap = process_size(data)
     child = index_size_of(data)
     if child <= 0:
         return []
@@ -128,8 +167,7 @@ def child_indexes(parent: str, cfg: ProcessConfigIn | None = None) -> list[str]:
         return []
     if len(parent) <= child:
         return []
-    child_overlap = min(overlap, child // 4)
-    packed = _pack(_split_for_index(parent, child), child, child_overlap)
+    packed = _pack(_split_for_index(parent, child), child, 0)
     if len(packed) <= 1:
         return []
     return packed
@@ -142,8 +180,6 @@ def _paragraph_parts(
 ) -> list[str]:
     if ai_parts:
         return [part for part in (_prepare_text(item) for item in ai_parts) if part]
-    if cfg.chunkSettingMode == "custom" and cfg.chunkSplitMode == "char":
-        return _split_by_signs(body, cfg.chunkSplitter or cfg.customSplit or "\n")
     deep = int(cfg.paragraphChunkDeep or 5) if cfg.chunkSettingMode == "custom" else 5
     if has_heading(body, deep):
         return _attach_lonely_headings(split_heading_sections(body, deep))
@@ -219,7 +255,7 @@ def describe_process(cfg: ProcessConfigIn | None = None) -> str:
         if size <= 0:
             bits.append(f"按分隔符切开，不限制父块大小（{sep}）")
         else:
-            bits.append(f"按分隔符切开后打包到 {size} 字{extra}（{sep}）")
+            bits.append(f"按分隔符切开，单块超过 {size} 字再切（{sep}）")
     elif data.chunkSettingMode == "custom" and data.chunkSplitMode == "size":
         bits.append(f"按固定长度 {size or 1000} 字切块{extra}")
     elif data.chunkSettingMode == "custom":
@@ -232,12 +268,17 @@ def describe_process(cfg: ProcessConfigIn | None = None) -> str:
         if size <= 0:
             bits.append(f"按段落（深度 {data.paragraphChunkDeep}）切开，不限制父块大小{extra_ai}")
         else:
-            bits.append(f"按段落（深度 {data.paragraphChunkDeep}）打包到 {size} 字{extra}{extra_ai}")
+            bits.append(f"按段落（深度 {data.paragraphChunkDeep}）切开，单块超过 {size} 字再切{extra_ai}")
     elif size <= 0:
         bits.append("默认：按标题/空行切开，不限制父块大小")
     else:
-        bits.append(f"默认：标题/空行打包，超过 {size} 字再切{extra}")
-    if data.chunkSettingMode == "custom" and data.trainingType == "chunk":
+        bits.append(f"默认：有标题按标题切开，无标题按空行组成不超过 {size} 字的父块；单块超过 {size} 字再按句子切")
+    if (
+        data.chunkSettingMode == "custom"
+        and data.useChildIndex
+        and data.trainingType != "qa"
+        and not data.qaEnhance
+    ):
         bits.append(f"子块索引 {index_size_of(data)} 字")
     if data.chunkTriggerType == "forceChunk":
         bits.append("强制分块")
@@ -248,7 +289,7 @@ def describe_process(cfg: ProcessConfigIn | None = None) -> str:
     extras = [
         name
         for flag, name in (
-            (data.indexPrefixTitle, "标题加入索引"),
+            (data.indexPrefixTitle, "文档标题加入索引"),
             (data.autoIndexes, "补充索引"),
             (data.imageIndex, "图片索引"),
         )
@@ -448,6 +489,22 @@ def _window(text: str, size: int, overlap: int) -> list[str]:
             pieces.extend(_hard_window(part, size, overlap))
     packed = _pack(pieces, size, overlap, overflow=False)
     return packed or _hard_window(body, size, overlap)
+
+
+def _fit_parts(parts: list[str], size: int, overlap: int) -> list[str]:
+    """Keep each part as its own parent; size is a ceiling, not a fill target."""
+    if size <= 0:
+        return [part for part in ((raw or "").strip() for raw in parts) if part]
+    out: list[str] = []
+    for raw in parts:
+        part = (raw or "").strip()
+        if not part:
+            continue
+        if len(part) > size:
+            out.extend(_window(part, size, overlap))
+        else:
+            out.append(part)
+    return out
 
 
 def _pack(parts: list[str], size: int, overlap: int, *, overflow: bool = True) -> list[str]:

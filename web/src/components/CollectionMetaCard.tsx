@@ -18,11 +18,19 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
     { label: "更新时间", value: source.updatedAt },
     { label: "处理方式", value: process.trainingType === "qa" ? "问答对提取" : "分块存储" },
     { label: "PDF 增强解析", value: yesNo(process.pdfEnhance) },
-    { label: "将标题加入索引", value: yesNo(process.indexPrefixTitle) },
+    { label: "将文档标题加入索引", value: yesNo(process.indexPrefixTitle) },
     { label: "自动生成补充索引", value: yesNo(process.autoIndexes) },
     { label: "图片自动索引", value: yesNo(process.imageIndex) },
     { label: "分块大小", value: process.chunkSize > 0 ? String(process.chunkSize) : "不限制" },
-    { label: "索引大小", value: String(process.indexSize) },
+    ...(process.chunkSettingMode === "custom" && process.chunkSplitMode === "size"
+      ? [{ label: "分块重叠", value: String(process.chunkOverlap || 0) }]
+      : []),
+    ...(process.chunkSettingMode === "custom" && process.trainingType === "chunk"
+      ? [
+          { label: "生成子块索引", value: yesNo(process.useChildIndex) },
+          ...(process.useChildIndex ? [{ label: "索引大小", value: String(process.indexSize) }] : []),
+        ]
+      : []),
   ];
 
   return (

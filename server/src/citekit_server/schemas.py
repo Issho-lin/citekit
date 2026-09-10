@@ -167,6 +167,16 @@ class ProcessConfigIn(BaseModel):
     chunkOverlap: int = 0
     qaEnhance: bool = False
     customSplit: str = ""
+    useChildIndex: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_child_index(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "useChildIndex" in data:
+            return data
+        qa = data.get("trainingType") == "qa" or data.get("qaEnhance")
+        custom = data.get("chunkSettingMode") == "custom"
+        return {**data, "useChildIndex": bool(custom and not qa)}
 
 
 class KnowledgeBaseOut(BaseModel):
@@ -254,6 +264,7 @@ class SourceOut(BaseModel):
     chunkOverlap: int = 0
     qaEnhance: bool = False
     customSplit: str = ""
+    useChildIndex: bool = False
     fileId: str | None = None
     hasOriginal: bool = False
 

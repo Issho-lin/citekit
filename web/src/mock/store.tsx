@@ -413,6 +413,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         "chunkOverlap",
         "qaEnhance",
         "customSplit",
+        "useChildIndex",
       ];
       const process = Object.fromEntries(
         processKeys.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]]),

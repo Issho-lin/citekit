@@ -29,10 +29,19 @@ import { DEFAULT_QA_PROMPT, INDEX_SIZES, SPLIT_SIGNS } from "../constants";
 import type { ProcessConfig } from "../types";
 import { useDatasetImportOptional } from "./Context";
 
+const CHUNK_OVERLAP_TIP =
+  "相邻两块在切点处重复的字数，只用于按固定长度切开。下一块开头会带上上一块末尾，避免一句话被从中间断开后两边都检索不到。0 表示不重叠，须小于分块大小的一半。";
+const CHUNK_TIP = "原文按固定长度切开后存入知识库。";
 const PARENT_CHUNK_TIP =
   "父块：原文按规则切开后存入知识库的完整段落，检索命中后交给模型阅读。建议大于「索引大小」。";
+const CHUNK_MAX_TIP =
+  "按标题或段落切开后，每一段单独成块。某一段超过该字数时，再按句号、问号、感叹号等句子边界切开，使每块不超过该字数。文中识别不到标题时，空行（或换行）切开的短段会依次放入同一块，直到接近该字数。勾选不限制后，切开的段落保持原长，不再按字数拆开。";
 const PARENT_CHUNK_MAX_TIP =
-  "有上限时：先按标题切段，相邻短段拼到这个字数，单段超长再按句子切。不限制时：只按标题/段落切开，一条标题就是一块父块，不再按字数拆开。";
+  "按标题或段落切开后，每一段单独作为父块。某一段超过该字数时，再按句号、问号、感叹号等句子边界切开，使每块不超过该字数。文中识别不到标题时，空行（或换行）切开的短段会依次放入同一块，直到接近该字数。勾选不限制后，切开的段落保持原长，不再按字数拆开。";
+const CHAR_CHUNK_MAX_TIP =
+  "按分隔符切开后，每一段单独成块。某一段超过该字数时，再按句号、问号、感叹号等句子边界切开。不限制时只按分隔符切开，不再按字数拆开。";
+const CHAR_PARENT_CHUNK_MAX_TIP =
+  "按分隔符切开后，每一段单独作为父块。某一段超过该字数时，再按句号、问号、感叹号等句子边界切开。不限制时只按分隔符切开，不再按字数拆开。";
 const CHILD_INDEX_TIP =
   "子块：把每个父块再按该长度切开并向量化，用来检索。搜中子块后返回对应的整段父块。有父块上限时应小于或等于该上限。";
 const PARAGRAPH_DEPTH_TIP =
@@ -371,8 +380,10 @@ function ChunkSettings({
 }) {
   const prompt = useDisclosure();
   const [draftPrompt, setDraftPrompt] = useState(value.qaPrompt);
-  const knownSign = SPLIT_SIGNS.some((s) => s.value === value.chunkSplitter && s.value !== "Other");
-  const [signPick, setSignPick] = useState(knownSign ? value.chunkSplitter : "Other");
+  const splitter = value.chunkSplitter || "\\n";
+  const knownSign = SPLIT_SIGNS.some((s) => s.value === splitter && s.value !== "Other");
+  const [signPick, setSignPick] = useState(knownSign ? splitter : "Other");
+  const parentChild = value.trainingType === "chunk" && value.useChildIndex;
 
   function patch(next: Partial<ProcessConfig>) {
     const merged = { ...value, ...next };
@@ -380,6 +391,12 @@ function ChunkSettings({
     merged.customSplit = merged.chunkSplitter;
     onChange(merged);
   }
+
+  useEffect(() => {
+    if (value.chunkSettingMode !== "custom" || value.chunkSplitMode !== "size") return;
+    if (value.chunkSize > 0) return;
+    patch({ chunkSize: 1000 });
+  }, [value.chunkSettingMode, value.chunkSplitMode, value.chunkSize]);
 
   return (
     <Box>
@@ -444,19 +461,17 @@ function ChunkSettings({
         <Grid gridTemplateColumns="1fr 1fr" rowGap={[2, 4]} columnGap={[3, 7]}>
           <HStack spacing={1}>
             <Checkbox
-              size="sm"
               isChecked={value.indexPrefixTitle}
               onChange={(e) => patch({ indexPrefixTitle: e.target.checked })}
             >
-              <CheckLabel>将标题加入索引</CheckLabel>
+              <CheckLabel>将文档标题加入索引</CheckLabel>
             </Checkbox>
-            <QuestionTip label="自动给所有索引加上标题名" />
+            <QuestionTip label="向量化时在每条索引文本前加上数据集标题，便于按文档名召回。分块正文不会改。" />
           </HStack>
           {value.trainingType === "chunk" && (
             <>
               <HStack spacing={1}>
                 <Checkbox
-                  size="sm"
                   isChecked={value.autoIndexes}
                   onChange={(e) => patch({ autoIndexes: e.target.checked })}
                 >
@@ -466,7 +481,6 @@ function ChunkSettings({
               </HStack>
               <HStack spacing={1}>
                 <Checkbox
-                  size="sm"
                   isChecked={value.imageIndex}
                   onChange={(e) => patch({ imageIndex: e.target.checked })}
                 >
@@ -493,16 +507,13 @@ function ChunkSettings({
               <Box fontSize="xs" color="myGray.600" lineHeight={1.75}>
                 <Box>1. {triggerRuleText(value)}</Box>
                 <Box mt={1.5}>
-                  2. 决定切开后：文中若能识别到标题（Markdown、Word 标题样式、第X章/节/条等，默认一到五级），就在每个标题处断开，标题和它下面的正文算一段。
+                  2. 决定切开后：文中若能识别到标题（Markdown、Word 标题样式、第X章/节/条等，默认一到五级），就在每个标题处断开。标题和它下面、直到下一个同级或更高级标题之前的正文算一段。只有标题、没有正文的行会和下一段正文放在同一块。每一段就是一块；某一段超过 1000 字时，再按句号、问号、感叹号等句子边界切开，使每块不超过 1000 字；单句仍然过长时再按逗号、分号等切开。块与块之间默认不重复带上一段文字。
                 </Box>
                 <Box mt={1.5}>
-                  3. 若没有这类标题：按空行分段；如果全文仍只有一段，再按换行切。
+                  3. 若没有这类标题：按空行分段；如果全文仍只有一段，再按换行切。切出的短段会依次放入同一块，直到接近 1000 字；某一段本身超过 1000 字时，同样按句子切开。
                 </Box>
                 <Box mt={1.5}>
-                  4. 相邻的短段会拼在一起，每块尽量接近 1000 字。某一段本身超过 1000 字时，再按 1000 字切开。块与块之间不重复带上一段文字。
-                </Box>
-                <Box mt={1.5}>
-                  5. 检索和给模型阅读的是同一段完整文字，不会再切更短的检索片段，也不会调用模型来识别段落。
+                  4. 切出来的每一块既用来检索也用来给模型阅读，不会再切子块，也不会调用模型来识别段落。
                 </Box>
               </Box>
             ) : null}
@@ -512,13 +523,31 @@ function ChunkSettings({
             title="自定义"
             desc="自定义设置数据处理规则"
             py={3}
-            onSelect={() => patch({ chunkSettingMode: "custom" })}
+            onSelect={() =>
+              patch({
+                chunkSettingMode: "custom",
+                ...(value.chunkSettingMode !== "custom" ? { useChildIndex: true } : {}),
+              })
+            }
           >
             {value.chunkSettingMode === "custom" ? (
               <Box>
                 <SplitModeGroup
                   value={value.chunkSplitMode}
-                  onChange={(chunkSplitMode) => patch({ chunkSplitMode })}
+                  onChange={(chunkSplitMode) => {
+                    const next: Partial<ProcessConfig> = { chunkSplitMode };
+                    if (chunkSplitMode === "char" && !value.chunkSplitter) {
+                      setSignPick("\\n");
+                      next.chunkSplitter = "\\n";
+                    }
+                    if (chunkSplitMode === "size" && value.chunkSize <= 0) {
+                      next.chunkSize = 1000;
+                    }
+                    if (chunkSplitMode !== "size" && value.chunkOverlap) {
+                      next.chunkOverlap = 0;
+                    }
+                    patch(next);
+                  }}
                 />
 
                 {value.chunkSplitMode === "paragraph" && (
@@ -563,14 +592,18 @@ function ChunkSettings({
                       />
                     </Box>
                     <Box mt={2} fontSize="sm">
-                      <FieldLabel tip={PARENT_CHUNK_MAX_TIP}>最大分块大小（父块）</FieldLabel>
+                      <FieldLabel tip={parentChild ? PARENT_CHUNK_MAX_TIP : CHUNK_MAX_TIP}>
+                        {parentChild ? "最大分块大小（父块）" : "最大分块大小"}
+                      </FieldLabel>
                       <Checkbox
                         isChecked={value.chunkSize <= 0}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => patch({ chunkSize: e.target.checked ? 0 : 1000 })}
                         mb={2}
                       >
-                        <Box fontSize="sm">不限制大小，仅按标题/段落切开</Box>
+                        <Box as="span" color="myGray.600" fontWeight="normal" fontSize="sm" lineHeight="20px">
+                          不限制大小，仅按标题/段落切开
+                        </Box>
                       </Checkbox>
                       {value.chunkSize > 0 ? (
                         <IntInput
@@ -587,14 +620,31 @@ function ChunkSettings({
 
                 {value.chunkSplitMode === "size" && (
                   <Box mt={3} fontSize="sm">
-                    <FieldLabel tip={PARENT_CHUNK_TIP}>分块大小（父块）</FieldLabel>
+                    <FieldLabel tip={parentChild ? PARENT_CHUNK_TIP : CHUNK_TIP}>
+                      {parentChild ? "分块大小（父块）" : "分块大小"}
+                    </FieldLabel>
                     <IntInput
                       min={100}
                       max={3000}
                       step={100}
-                      value={value.chunkSize}
-                      onChange={(n) => patch({ chunkSize: n })}
+                      value={value.chunkSize > 0 ? value.chunkSize : 1000}
+                      onChange={(n) => {
+                        const limit = Math.floor(n / 2);
+                        const next: Partial<ProcessConfig> = { chunkSize: n };
+                        if (value.chunkOverlap > limit) next.chunkOverlap = limit;
+                        patch(next);
+                      }}
                     />
+                    <Box mt={3}>
+                      <FieldLabel tip={CHUNK_OVERLAP_TIP}>分块重叠</FieldLabel>
+                      <IntInput
+                        min={0}
+                        max={Math.max(0, Math.floor((value.chunkSize > 0 ? value.chunkSize : 1000) / 2))}
+                        step={50}
+                        value={value.chunkOverlap ?? 0}
+                        onChange={(n) => patch({ chunkOverlap: n })}
+                      />
+                    </Box>
                   </Box>
                 )}
 
@@ -625,21 +675,65 @@ function ChunkSettings({
                         />
                       )}
                     </HStack>
+                    <Box mt={1.5} color="myGray.500" fontSize="xs" lineHeight="1.6">
+                      {signPick === "Other" && !value.chunkSplitter.trim()
+                        ? "自定义分隔符为空时按单个换行切开。"
+                        : parentChild
+                          ? "按所选分隔符切开后，每一段作为一块父块；超过下方上限的段再按句子切开。"
+                          : "按所选分隔符切开后，每一段作为一块；超过下方上限的段再按句子切开。"}
+                    </Box>
+                    <Box mt={3}>
+                      <FieldLabel tip={parentChild ? CHAR_PARENT_CHUNK_MAX_TIP : CHAR_CHUNK_MAX_TIP}>
+                        {parentChild ? "最大分块大小（父块）" : "最大分块大小"}
+                      </FieldLabel>
+                      <Checkbox
+                        isChecked={value.chunkSize <= 0}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => patch({ chunkSize: e.target.checked ? 0 : 1000 })}
+                        mb={2}
+                      >
+                        <Box as="span" color="myGray.600" fontWeight="normal" fontSize="sm" lineHeight="20px">
+                          不限制大小，仅按分隔符切开
+                        </Box>
+                      </Checkbox>
+                      {value.chunkSize > 0 ? (
+                        <IntInput
+                          min={100}
+                          max={3000}
+                          step={100}
+                          value={value.chunkSize}
+                          onChange={(n) => patch({ chunkSize: n })}
+                        />
+                      ) : null}
+                    </Box>
                   </Box>
                 )}
 
                 {value.trainingType === "chunk" && (
-                  <Box fontSize="sm" mt={2}>
-                    <FieldLabel tip={CHILD_INDEX_TIP}>索引大小（子块）</FieldLabel>
-                    <Box color="myGray.500" fontSize="xs" lineHeight="1.5" mb={1.5}>
-                      父子文档：父块完整入库给模型读，子块用来检索；命中子块后返回对应父块。
-                    </Box>
-                    <MySelect
-                      h="32px"
-                      value={String(value.indexSize)}
-                      onChange={(next) => patch({ indexSize: Number(next) })}
-                      list={INDEX_SIZES.map((n) => ({ label: String(n), value: String(n) }))}
-                    />
+                  <Box fontSize="sm" mt={3}>
+                    <HStack spacing={1} mb={parentChild ? 2 : 0}>
+                      <Checkbox
+                        isChecked={value.useChildIndex}
+                        onChange={(e) => patch({ useChildIndex: e.target.checked })}
+                      >
+                        <CheckLabel>生成子块索引</CheckLabel>
+                      </Checkbox>
+                      <QuestionTip label="是否启用父子文档策略" />
+                    </HStack>
+                    {parentChild ? (
+                      <>
+                        <FieldLabel tip={CHILD_INDEX_TIP}>索引大小（子块）</FieldLabel>
+                        <Box color="myGray.500" fontSize="xs" lineHeight="1.5" mb={1.5}>
+                          父子文档：父块完整入库给模型读，子块用来检索；命中子块后返回对应父块。
+                        </Box>
+                        <MySelect
+                          h="32px"
+                          value={String(value.indexSize)}
+                          onChange={(next) => patch({ indexSize: Number(next) })}
+                          list={INDEX_SIZES.map((n) => ({ label: String(n), value: String(n) }))}
+                        />
+                      </>
+                    ) : null}
                   </Box>
                 )}
 

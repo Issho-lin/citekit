@@ -51,6 +51,7 @@ export interface ProcessConfig {
   chunkOverlap: number;
   qaEnhance: boolean;
   customSplit: string;
+  useChildIndex: boolean;
 }
 
 export interface SearchConfig {

@@ -183,7 +183,7 @@ export function PreviewData() {
                         : `均未超过 ${result.chunkSize} 字`}
                     </StatChip>
                   ) : (
-                    <StatChip>未限制父块大小</StatChip>
+                    <StatChip>未限制分块大小</StatChip>
                   )}
                 </HStack>
                 {result.notes.length > 0 ? (
