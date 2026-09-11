@@ -17,10 +17,10 @@ from citekit_server.db import (
     UploadedFileRow,
     get_db,
 )
-from citekit_server.tools_logic import forget_tools_for_kbs
+from citekit_server.tools.logic import forget_tools_for_kbs
 from citekit_server.ids import new_id
-from citekit_server.ingest import build_preview_from_kb, ingest_source, now_stamp, reindex_chunk
-from citekit_server.retrieve import search_kb
+from citekit_server.kb.ingest import build_preview_from_kb, ingest_source, now_stamp, reindex_chunk
+from citekit_server.retrieve.logic import search_kb
 from citekit_server.schemas import (
     FileOut,
     KnowledgeBaseIn,
@@ -38,8 +38,8 @@ from citekit_server.schemas import (
     ChunkPatch,
 )
 from citekit_server.serialize import chunk_to_out, kb_to_out, source_to_out
-from citekit_server.parse import extract_text
-from citekit_server.storage import (
+from citekit_server.kb.parse import extract_text
+from citekit_server.infra.storage import (
     as_local_path,
     delete_object,
     delete_prefix,
@@ -48,8 +48,8 @@ from citekit_server.storage import (
     open_object,
     put_bytes,
 )
-from citekit_server.vectors import delete_source_points, drop_kb
-from citekit_server.workspace_logic import ensure_workspace, pick_active
+from citekit_server.infra.vectors import delete_source_points, drop_kb
+from citekit_server.catalog.logic import ensure_workspace, pick_active
 
 router = APIRouter(prefix="/api")
 MAX_UPLOAD = 50 * 1024 * 1024

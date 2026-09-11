@@ -1,4 +1,4 @@
-from citekit_server.provider_protocol import protocol_of
+from citekit_server.infra.protocol import protocol_of
 from citekit_server.secretbox import mask_secret
 from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, ModelCallRow, ProviderRow, SourceRow, WorkspaceRow
 from citekit_server.schemas import (

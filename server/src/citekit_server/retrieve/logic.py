@@ -4,13 +4,13 @@ import re
 
 from sqlalchemy.orm import Session
 
-from citekit_server.call_log import call_scope
+from citekit_server.calls.log import call_scope
 from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, SourceRow
-from citekit_server.ingest import embedding_model, resolve_auth
+from citekit_server.kb.ingest import embedding_model, resolve_auth
 from citekit_server.schemas import ChunkOut, SearchHit, SearchIn, SearchOut
 from citekit_server.serialize import chunk_to_out
-from citekit_server.upstream import embed_texts, rerank_texts
-from citekit_server.vectors import search as vector_search
+from citekit_server.infra.upstream import embed_texts, rerank_texts
+from citekit_server.infra.vectors import search as vector_search
 
 
 def _blob(row: ChunkRow) -> str:

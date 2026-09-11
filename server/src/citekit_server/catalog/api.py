@@ -23,10 +23,10 @@ from citekit_server.serialize import (
     provider_to_out,
     workspace_to_out,
 )
-from citekit_server.call_log import call_scope
-from citekit_server.upstream import list_remote_models, test_model
+from citekit_server.calls.log import call_scope
+from citekit_server.infra.upstream import list_remote_models, test_model
 from citekit_server.secretbox import decrypt_envelope, public_pem
-from citekit_server.workspace_logic import ensure_workspace, pick_fallback, retarget_model_id
+from citekit_server.catalog.logic import ensure_workspace, pick_fallback, retarget_model_id
 
 router = APIRouter(prefix="/api")
 

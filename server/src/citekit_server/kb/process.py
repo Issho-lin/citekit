@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from citekit_server.call_log import call_scope
-from citekit_server.chunking import (
+from citekit_server.calls.log import call_scope
+from citekit_server.kb.chunking import (
     Unit,
     child_indexes,
     describe_process,
@@ -13,9 +13,9 @@ from citekit_server.chunking import (
     split_parents,
 )
 from citekit_server.db import AiModelRow
-from citekit_server.parse import ParseOut, parse_file
+from citekit_server.kb.parse import ParseOut, parse_file
 from citekit_server.schemas import ProcessConfigIn
-from citekit_server.upstream import chat_completion
+from citekit_server.infra.upstream import chat_completion
 
 PDF_PROMPT = (
     "请把这一页文档转成 Markdown。保留标题层级、列表和表格。"

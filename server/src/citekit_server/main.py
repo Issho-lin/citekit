@@ -4,16 +4,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from citekit_server import __version__
-from citekit_server.agent_api import router as agent_router
-from citekit_server.api import router
-from citekit_server.calls_api import router as calls_router
+from citekit_server.agent.api import router as agent_router
+from citekit_server.catalog.api import router as catalog_router
+from citekit_server.calls.api import router as calls_router
 from citekit_server.config import settings
 from citekit_server.db import Base, SessionLocal, UploadedFileRow, engine, ensure_schema
-from citekit_server.kb_api import router as kb_router
-from citekit_server.mcp_http import router as mcp_router
-from citekit_server.tools_api import router as tools_router
-from citekit_server.seed import seed_if_empty
-from citekit_server.storage import ensure_bucket, migrate_local_uploads
+from citekit_server.eval.api import router as eval_router
+from citekit_server.kb.api import router as kb_router
+from citekit_server.tools.mcp import router as mcp_router
+from citekit_server.tools.api import router as tools_router
+from citekit_server.catalog.seed import seed_if_empty
+from citekit_server.infra.storage import ensure_bucket, migrate_local_uploads
 
 
 @asynccontextmanager
@@ -39,9 +40,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(router)
+app.include_router(catalog_router)
 app.include_router(kb_router)
 app.include_router(tools_router)
+app.include_router(eval_router)
 app.include_router(agent_router)
 app.include_router(calls_router)
 app.include_router(mcp_router)

@@ -1,6 +1,6 @@
 import unittest
 
-from citekit_server.eval_logic import expect_hit, retrieve_label, retrieve_of, retrieve_snapshot
+from citekit_server.eval.logic import expect_hit, retrieve_label, retrieve_of, retrieve_snapshot
 from citekit_server.schemas import SearchConfigIn
 
 

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from citekit_server import __version__
 from citekit_server.db import McpEndpointRow, ToolRow, get_db
-from citekit_server.tools_logic import format_hits, mcp_tool_list_item, search_tool
+from citekit_server.tools.logic import format_hits, mcp_tool_list_item, search_tool
 
 router = APIRouter()
 

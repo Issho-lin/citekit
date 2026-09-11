@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import {
   Button,
   HStack,
-  Input,
   Modal,
   ModalBody,
   ModalContent,
@@ -15,6 +14,7 @@ import { api } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataTable, Empty, PageHero } from "../components/chrome";
 import { IconChevron, IconInfo, IconTokenIn, IconTokenOut } from "../components/icons";
+import { MyDatePicker } from "../components/MyDatePicker";
 import { MySelect } from "../components/MySelect";
 import { ProviderAvatar } from "../components/model/shared";
 import { useToast } from "../components/Toast";
@@ -28,15 +28,35 @@ const PURPOSE_LABEL: Record<string, string> = {
   ingest: "入库向量化",
   retrieve: "检索向量化",
   rerank: "重排",
-  chat: "对话",
-  embed: "向量化",
+  agent: "对话",
+  suggest_tool_meta: "生成工具契约",
+  suggest_tool_name: "生成调用名",
+  suggest_tool_description: "生成工具描述",
   qa: "问答提取",
   paragraph: "识别段落",
   pdf_enhance: "PDF 增强",
   image_index: "图片索引",
   auto_index: "补充索引",
+  embed: "向量化",
+  chat: "对话补全",
   call: "其它",
 };
+
+const PURPOSE_FILTER = [
+  "test",
+  "ingest",
+  "retrieve",
+  "rerank",
+  "agent",
+  "suggest_tool_meta",
+  "suggest_tool_name",
+  "suggest_tool_description",
+  "qa",
+  "paragraph",
+  "pdf_enhance",
+  "image_index",
+  "auto_index",
+] as const;
 
 const PAGE_SIZES = [10, 20, 50];
 
@@ -58,6 +78,18 @@ function pretty(value: unknown) {
   } catch {
     return String(value);
   }
+}
+
+function dayRange(date: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return {};
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const start = new Date(year, month, day);
+  const end = new Date(year, month, day + 1);
+  if (start.getFullYear() !== year || start.getMonth() !== month || start.getDate() !== day) return {};
+  return { from: start.toISOString(), to: end.toISOString() };
 }
 
 function formatCount(n: number | null | undefined) {
@@ -147,8 +179,7 @@ export function CallLogsPage() {
   const [type, setType] = useState("");
   const [purpose, setPurpose] = useState("");
   const [result, setResult] = useState("");
-  const [q, setQ] = useState("");
-  const [qDraft, setQDraft] = useState("");
+  const [day, setDay] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [items, setItems] = useState<ModelCallSummary[]>([]);
@@ -158,7 +189,7 @@ export function CallLogsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
 
-  const filterKey = `${type}|${purpose}|${result}|${q}|${pageSize}`;
+  const filterKey = `${type}|${purpose}|${result}|${day}|${pageSize}`;
   const filterRef = useRef(filterKey);
   let nextPage = page;
   if (filterRef.current !== filterKey) {
@@ -176,11 +207,11 @@ export function CallLogsPage() {
       type: type || undefined,
       purpose: purpose || undefined,
       ok: result === "ok" ? true : result === "fail" ? false : undefined,
-      q: q.trim() || undefined,
+      ...dayRange(day),
       limit: pageSize,
       offset: (currentPage - 1) * pageSize,
     }),
-    [type, purpose, result, q, pageSize, currentPage],
+    [type, purpose, result, day, pageSize, currentPage],
   );
 
   const load = useCallback(async () => {
@@ -229,7 +260,7 @@ export function CallLogsPage() {
       <div className="page-inner-wide">
         <PageHero
           title="调用记录"
-          desc="所有实际上游模型请求都会记在这里：连通测试、入库向量化、检索、重排、拉取模型列表。点一行看请求和响应。"
+          desc="实际上游推理会记在这里，只留最近 7 天、最多 2000 条。点一行看请求和响应；成功的向量化只保留摘要和 Token，不存向量原文。"
           action={
             <HStack spacing={2}>
               <Button size="sm" variant="whiteBase" onClick={() => void load()} isLoading={loading}>
@@ -262,7 +293,7 @@ export function CallLogsPage() {
             onChange={setPurpose}
             list={[
               { value: "", label: "全部用途" },
-              ...Object.entries(PURPOSE_LABEL).map(([value, label]) => ({ value, label })),
+              ...PURPOSE_FILTER.map((value) => ({ value, label: PURPOSE_LABEL[value] })),
             ]}
           />
           <MySelect
@@ -277,25 +308,13 @@ export function CallLogsPage() {
               { value: "fail", label: "失败" },
             ]}
           />
-          <Input
-            size="sm"
-            h="32px"
-            maxW="280px"
-            bg="white"
-            placeholder="搜模型 ID、摘要、错误…"
-            value={qDraft}
-            onChange={(e) => setQDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") setQ(qDraft);
-            }}
-            onBlur={() => setQ(qDraft)}
-          />
+          <MyDatePicker value={day} onChange={setDay} w="160px" h="32px" />
         </div>
 
         {loading && items.length === 0 ? null : items.length === 0 ? (
           <Empty
             text={
-              type || purpose || result || q.trim() ? (
+              type || purpose || result || day ? (
                 "没有符合筛选条件的调用记录。"
               ) : (
                 <>

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from citekit_server.calls.log import prune_model_calls
 from citekit_server.db import ModelCallRow, get_db
 from citekit_server.schemas import ModelCallListOut, ModelCallOut
 from citekit_server.serialize import call_to_out, call_to_summary
@@ -15,12 +15,15 @@ def list_model_calls(
     model_type: str | None = Query(None, alias="type"),
     purpose: str | None = None,
     ok: bool | None = None,
-    q: str | None = None,
+    day_from: str | None = Query(None, alias="from"),
+    day_to: str | None = Query(None, alias="to"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> ModelCallListOut:
-    query = db.query(ModelCallRow)
+    prune_model_calls(db)
+    db.commit()
+    query = db.query(ModelCallRow).filter(ModelCallRow.kind != "models", ModelCallRow.purpose != "discover")
     if model_id:
         query = query.filter(ModelCallRow.model_id == model_id)
     if model_type:
@@ -29,19 +32,12 @@ def list_model_calls(
         query = query.filter(ModelCallRow.purpose == purpose)
     if ok is not None:
         query = query.filter(ModelCallRow.ok.is_(ok))
-    needle = (q or "").strip()
-    if needle:
-        like = f"%{needle}%"
-        query = query.filter(
-            or_(
-                ModelCallRow.model_id.like(like),
-                ModelCallRow.model_name.like(like),
-                ModelCallRow.mapped_model.like(like),
-                ModelCallRow.summary.like(like),
-                ModelCallRow.error.like(like),
-                ModelCallRow.url.like(like),
-            )
-        )
+    start = (day_from or "").strip()
+    end = (day_to or "").strip()
+    if start:
+        query = query.filter(ModelCallRow.created_at >= start)
+    if end:
+        query = query.filter(ModelCallRow.created_at < end)
     total = query.count()
     rows = query.order_by(ModelCallRow.created_at.desc(), ModelCallRow.id.desc()).offset(offset).limit(limit).all()
     return ModelCallListOut(items=[call_to_summary(row) for row in rows], total=total)

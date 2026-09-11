@@ -7,9 +7,9 @@ from typing import Any
 
 import httpx
 
-from citekit_server.call_log import record_http_call
+from citekit_server.calls.log import record_http_call
 from citekit_server.db import AiModelRow
-from citekit_server.provider_protocol import BASE_SUFFIXES, ProviderProtocol, protocol_of
+from citekit_server.infra.protocol import BASE_SUFFIXES, ProviderProtocol, protocol_of
 from citekit_server.schemas import TestOut
 
 PING = "citekit ping"

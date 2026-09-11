@@ -1,10 +1,10 @@
 # 切块规则
 
-入库切块的实现在 `server/src/citekit_server/chunking.py`，由 `process_doc.py` 在解析正文之后调用。文档里的「大小」一律指 **Python 字符数**，不是 token。
+入库切块的实现在 `server/src/citekit_server/kb/chunking.py`，由 `kb/process.py` 在解析正文之后调用。文档里的「大小」一律指 **Python 字符数**，不是 token。
 
 已入库的数据不会因为改了切块代码自动更新，需要重新处理才会按新规则切片。
 
-单测：`server/tests/test_chunking.py`（在 `server` 目录下 `PYTHONPATH=src python -m unittest tests.test_chunking`）。
+单测：`server/tests/test_chunking.py`（在 `server` 目录下 `PYTHONPATH=src .venv/bin/python -m unittest tests.test_chunking`）。
 
 ---
 
@@ -118,7 +118,7 @@
 
 ## 和切块相邻、但不改变切法的选项
 
-这些在 `process_doc.py`，发生在切块前后：
+这些在 `kb/process.py`，发生在切块前后：
 
 - **将文档标题加入索引**：向量化文本前加上数据集/文件标题，不改分块正文
 - **自动生成补充索引**：每块再生成若干问法/关键词，另写向量
@@ -136,5 +136,5 @@
 | `_fit_parts` | 一段一块，仅超长再切 |
 | `_pack` | 短段贪心装到上限 |
 | `child_indexes` | 父块 → 子块 |
-| `embed_items`（`process_doc.py`） | 决定向量化父块还是子块 |
+| `embed_items`（`kb/process.py`） | 决定向量化父块还是子块 |
 | `search_kb`（`retrieve.py`） | 搜子块、回父块 |

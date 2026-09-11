@@ -1,6 +1,6 @@
 import unittest
 
-from citekit_server.chunking import child_indexes, describe_process, split_parents
+from citekit_server.kb.chunking import child_indexes, describe_process, split_parents
 from citekit_server.schemas import ProcessConfigIn
 
 

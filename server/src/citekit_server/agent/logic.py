@@ -8,9 +8,9 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from citekit_server.call_log import call_scope
+from citekit_server.calls.log import call_scope
 from citekit_server.db import AiModelRow, McpEndpointRow, ToolRow
-from citekit_server.ingest import resolve_auth
+from citekit_server.kb.ingest import resolve_auth
 from citekit_server.schemas import (
     AgentChatIn,
     AgentChatOut,
@@ -18,8 +18,8 @@ from citekit_server.schemas import (
     AgentStepOut,
     SearchOut,
 )
-from citekit_server.tools_logic import format_hits, mcp_tool_list_item, search_tool
-from citekit_server.upstream import chat_messages
+from citekit_server.tools.logic import format_hits, mcp_tool_list_item, search_tool
+from citekit_server.infra.upstream import chat_messages
 
 MAX_ROUNDS = 6
 MAX_HISTORY = 24
@@ -71,7 +71,7 @@ def _pick_model(db: Session, model_id: str | None) -> AiModelRow:
         if row.type not in {"llm", "vlm"}:
             raise HTTPException(400, "请选择文本理解模型")
         return row
-    from citekit_server.workspace_logic import ensure_workspace
+    from citekit_server.catalog.logic import ensure_workspace
 
     ws = ensure_workspace(db)
     fallback = (ws.llm_model or "").strip()

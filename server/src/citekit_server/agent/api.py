@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from citekit_server.agent_logic import iter_agent_events, run_agent
+from citekit_server.agent.logic import iter_agent_events, run_agent
 from citekit_server.db import get_db
 from citekit_server.schemas import AgentChatIn, AgentChatOut
 

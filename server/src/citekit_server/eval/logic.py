@@ -172,7 +172,7 @@ def get_run(db: Session, run_id: str) -> EvalRunOut:
 
 
 def run_tool_eval(db: Session, tool: ToolRow) -> EvalRunOut:
-    from citekit_server.tools_logic import search_config_of, search_tool
+    from citekit_server.tools.logic import search_config_of, search_tool
 
     cases = db.query(EvalCaseRow).filter(EvalCaseRow.tool_id == tool.id).order_by(EvalCaseRow.id.desc()).all()
     search = search_config_of(tool.search)

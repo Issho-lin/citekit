@@ -5,8 +5,8 @@ from datetime import datetime
 from qdrant_client.http.models import PointStruct
 from sqlalchemy.orm import Session
 
-from citekit_server.call_log import call_scope
-from citekit_server.chunking import process_size
+from citekit_server.calls.log import call_scope
+from citekit_server.kb.chunking import process_size
 from citekit_server.db import (
     AiModelRow,
     ChunkRow,
@@ -16,12 +16,12 @@ from citekit_server.db import (
     UploadedFileRow,
 )
 from citekit_server.ids import new_uuid
-from citekit_server.process_doc import Unit, ProcessResult, embed_items, run_process
+from citekit_server.kb.process import Unit, ProcessResult, embed_items, run_process
 from citekit_server.schemas import PreviewChunk, PreviewOut, ProcessConfigIn
-from citekit_server.storage import as_local_path
-from citekit_server.upstream import embed_texts
-from citekit_server.vectors import delete_chunk_points, delete_source_points, upsert_points
-from citekit_server.workspace_logic import ensure_workspace, pick_active
+from citekit_server.infra.storage import as_local_path
+from citekit_server.infra.upstream import embed_texts
+from citekit_server.infra.vectors import delete_chunk_points, delete_source_points, upsert_points
+from citekit_server.catalog.logic import ensure_workspace, pick_active
 
 
 def now_stamp() -> str:

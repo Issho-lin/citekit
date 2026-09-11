@@ -3,8 +3,11 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
+
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session
 
 from citekit_server.db import AiModelRow, ModelCallRow, SessionLocal
 from citekit_server.ids import new_id
@@ -15,6 +18,8 @@ MAX_STR = 4000
 MAX_LIST = 40
 MAX_JSON_CHARS = 48_000
 VECTOR_PREVIEW = 8
+KEEP_DAYS = 7
+MAX_ROWS = 2000
 
 
 @contextmanager
@@ -40,13 +45,18 @@ def record_http_call(
     model: AiModelRow | None = None,
 ) -> None:
     ctx = dict(_ctx.get() or {})
+    purpose = str(ctx.get("purpose") or _default_purpose(kind))
+    if kind == "models" or purpose == "discover":
+        return
     parsed, usage = _parse_response(response_text)
     request = _cap_json(_sanitize(request_body))
     response = _cap_json(_sanitize(parsed))
     prompt, completion, total = _tokens(usage)
     http_ok = bool(status) and status < 400 and not error
-    purpose = str(ctx.get("purpose") or _default_purpose(kind))
     summary = _summary(kind, request, response, error, status, http_ok)
+    if http_ok and kind.startswith("embedding"):
+        request = None
+        response = None
     row = ModelCallRow(
         id=new_id("call"),
         created_at=_now(),
@@ -75,11 +85,37 @@ def record_http_call(
     db = SessionLocal()
     try:
         db.add(row)
+        prune_model_calls(db)
         db.commit()
     except Exception:
         db.rollback()
     finally:
         db.close()
+
+
+def prune_model_calls(db: Session) -> None:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    db.query(ModelCallRow).filter(
+        or_(
+            ModelCallRow.created_at < cutoff,
+            ModelCallRow.kind == "models",
+            ModelCallRow.purpose == "discover",
+        )
+    ).delete(synchronize_session=False)
+    total = int(db.query(func.count(ModelCallRow.id)).scalar() or 0)
+    extra = total - MAX_ROWS
+    while extra > 0:
+        oldest = (
+            db.query(ModelCallRow.id)
+            .order_by(ModelCallRow.created_at.asc(), ModelCallRow.id.asc())
+            .limit(min(extra, 500))
+            .all()
+        )
+        ids = [item[0] for item in oldest]
+        if not ids:
+            break
+        db.query(ModelCallRow).filter(ModelCallRow.id.in_(ids)).delete(synchronize_session=False)
+        extra -= len(ids)
 
 
 def _cap_json(value: Any) -> Any:

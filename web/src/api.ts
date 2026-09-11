@@ -200,7 +200,8 @@ export const api = {
     type?: string;
     purpose?: string;
     ok?: boolean;
-    q?: string;
+    from?: string;
+    to?: string;
     limit?: number;
     offset?: number;
   }) => {
@@ -209,7 +210,8 @@ export const api = {
     if (params?.type) query.set("type", params.type);
     if (params?.purpose) query.set("purpose", params.purpose);
     if (params?.ok !== undefined) query.set("ok", String(params.ok));
-    if (params?.q) query.set("q", params.q);
+    if (params?.from) query.set("from", params.from);
+    if (params?.to) query.set("to", params.to);
     if (params?.limit != null) query.set("limit", String(params.limit));
     if (params?.offset != null) query.set("offset", String(params.offset));
     const suffix = query.toString();
