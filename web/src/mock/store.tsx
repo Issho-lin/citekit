@@ -8,6 +8,7 @@ import type {
   ApiDatasetServer,
   Chunk,
   EvalCase,
+  EvalRun,
   KnowledgeBase,
   McpEndpoint,
   ModelProvider,
@@ -106,11 +107,13 @@ interface Store {
   updateTool: (id: string, patch: Partial<RetrievalTool> & { search?: SearchConfig }) => Promise<void>;
   removeTool: (id: string) => Promise<void>;
   addEndpoint: (input: { name: string; env: "dev" | "prod"; toolIds: string[] }) => Promise<string>;
+  patchEndpoint: (id: string, patch: Partial<Pick<McpEndpoint, "name" | "env" | "toolIds">>) => Promise<void>;
   toggleEndpointTool: (endpointId: string, toolId: string) => Promise<void>;
   addToolToEndpoint: (endpointId: string, toolId: string) => Promise<void>;
   removeEndpoint: (id: string) => Promise<void>;
   addEvalCase: (input: { query: string; toolId: string; expect: string; warehouse?: string }) => Promise<void>;
-  runEvalCases: () => Promise<{ id: string; pass: boolean; detail: string }[]>;
+  removeEvalCase: (id: string) => Promise<void>;
+  runEvalCases: (toolId?: string) => Promise<{ runs: EvalRun[]; failed: number }>;
 }
 
 const StoreContext = createContext<Store | null>(null);
@@ -522,6 +525,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return created.id;
   }, []);
 
+  const patchEndpoint = useCallback(async (id: string, patch: Partial<Pick<McpEndpoint, "name" | "env" | "toolIds">>) => {
+    const updated = await api.patchEndpoint(id, patch);
+    setEndpoints((prev) => prev.map((item) => (item.id === id ? updated : item)));
+  }, []);
+
   const toggleEndpointTool = useCallback(async (endpointId: string, toolId: string) => {
     const current = endpoints.find((item) => item.id === endpointId);
     if (!current) return;
@@ -547,13 +555,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (input: { query: string; toolId: string; expect: string; warehouse?: string }) => {
       const created = await api.createEvalCase(input);
       setEvalCases((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+      const toolList = await api.listTools();
+      setTools(toolList);
     },
     [],
   );
 
-  const runEvalCases = useCallback(async () => {
-    const result = await api.runEvalCases();
-    return result.items.map((item) => ({ id: item.id, pass: item.ok, detail: item.detail }));
+  const removeEvalCase = useCallback(async (id: string) => {
+    await api.deleteEvalCase(id);
+    setEvalCases((prev) => prev.filter((item) => item.id !== id));
+    const toolList = await api.listTools();
+    setTools(toolList);
+  }, []);
+
+  const runEvalCases = useCallback(async (toolId?: string) => {
+    const result = await api.runEvalCases(toolId);
+    const toolList = await api.listTools();
+    setTools(toolList);
+    return result;
   }, []);
 
   const value = useMemo<Store>(
@@ -601,10 +620,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateTool,
       removeTool,
       addEndpoint,
+      patchEndpoint,
       toggleEndpointTool,
       addToolToEndpoint,
       removeEndpoint,
       addEvalCase,
+      removeEvalCase,
       runEvalCases,
     }),
     [
@@ -651,10 +672,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateTool,
       removeTool,
       addEndpoint,
+      patchEndpoint,
       toggleEndpointTool,
       addToolToEndpoint,
       removeEndpoint,
       addEvalCase,
+      removeEvalCase,
       runEvalCases,
     ],
   );

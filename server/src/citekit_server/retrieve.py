@@ -79,21 +79,22 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             return SearchOut(hits=[], message=f"仓库「{warehouse}」下没有可检索的数据。")
 
     by_id = {row.id: row for row in chunks}
-    scored: dict[str, tuple[float, str]] = {}
+    keyword: dict[str, float] = {}
+    semantic: dict[str, tuple[float, str]] = {}
     mode = body.searchMode or "mix"
 
     if mode in {"fullText", "mix"}:
         for row in chunks:
             score = _keyword_score(query, _blob(row))
             if score > 0:
-                scored[row.id] = (score, "全文检索")
+                keyword[row.id] = score
 
     if mode in {"embedding", "mix"}:
         try:
             model = embedding_model(db, kb)
             with call_scope(purpose="retrieve", kb_id=kb.id):
                 vector = embed_texts(model, resolve_auth(db, model), [query])[0]
-            hits = vector_search(kb.id, vector, limit=max(body.limit * 3, 20), source_ids=source_ids)
+            hits = vector_search(kb.id, vector, limit=max(body.limit * 8, 48), source_ids=source_ids)
         except Exception as exc:
             if mode == "embedding":
                 return SearchOut(hits=[], message=str(exc) or "语义检索失败")
@@ -105,22 +106,44 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
                 continue
             score = float(hit.score or 0)
             kind = str(payload.get("index_type") or "")
-            label = _hit_label(kind, "语义检索")
-            prev = scored.get(cid)
-            if prev:
-                scored[cid] = ((prev[0] + score) / 2, _hit_label(kind, "混合检索"))
-            else:
-                scored[cid] = (score, label)
+            prev = semantic.get(cid)
+            if prev is None or score > prev[0]:
+                semantic[cid] = (score, kind)
+
+    scored: dict[str, tuple[float, str]] = {cid: (score, "全文检索") for cid, score in keyword.items()}
+    for cid, (score, kind) in semantic.items():
+        prev = scored.get(cid)
+        if prev:
+            scored[cid] = (max(prev[0], score), _hit_label(kind, "混合检索"))
+        else:
+            scored[cid] = (score, _hit_label(kind, "语义检索"))
 
     ranked = sorted(scored.items(), key=lambda item: item[1][0], reverse=True)
     ranked = [(cid, score, note) for cid, (score, note) in ranked if score >= body.similarity]
     if not ranked:
         return SearchOut(hits=[], message=f"低于相似度 {body.similarity}，无召回。可调低阈值再试。")
 
+    lexical = [
+        cid
+        for cid, score in sorted(keyword.items(), key=lambda item: item[1], reverse=True)
+        if score >= body.similarity
+    ][: max(body.limit, 5)]
+
     if body.usingRerank and kb.rerank_model:
         rerank_row = db.get(AiModelRow, kb.rerank_model)
         if rerank_row and rerank_row.type == "rerank":
-            pool = ranked[: max(body.limit, 8)]
+            pool: list[tuple[str, float, str]] = []
+            seen: set[str] = set()
+            for cid, score, note in ranked[: max(body.limit * 2, 8)]:
+                if cid in seen:
+                    continue
+                pool.append((cid, score, note))
+                seen.add(cid)
+            for cid in lexical:
+                if cid in seen:
+                    continue
+                pool.append((cid, keyword[cid], "全文检索"))
+                seen.add(cid)
             docs = [
                 f"{by_id[cid].text}\n{by_id[cid].answer}" if by_id[cid].answer else by_id[cid].text
                 for cid, _, _ in pool

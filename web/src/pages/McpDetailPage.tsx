@@ -19,6 +19,7 @@ import { IconSearch } from "../components/icons";
 import { api, type McpRpc } from "../api";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
+import { evalStatus } from "../evalStatus";
 import type { McpEndpoint, RetrievalTool } from "../types";
 
 export function McpDetailPage() {
@@ -26,7 +27,7 @@ export function McpDetailPage() {
   const nav = useNavigate();
   const toast = useToast();
   const del = useDisclosure();
-  const { endpoints, tools, knowledgeBases, kbsReady, toggleEndpointTool, removeEndpoint } = useStore();
+  const { endpoints, tools, knowledgeBases, kbsReady, toggleEndpointTool, patchEndpoint, removeEndpoint } = useStore();
   const ep = endpoints.find((e) => e.id === endpointId);
   const listed = tools.filter((t) => ep?.toolIds.includes(t.id));
   const [playTool, setPlayTool] = useState("");
@@ -82,7 +83,20 @@ export function McpDetailPage() {
           title={ep.name}
           desc={`${ep.env} · ${ep.url}`}
           action={
-            <Flex gap={2}>
+            <Flex gap={2} align="center">
+              <MySelect
+                w="120px"
+                value={ep.env}
+                onChange={(next) => {
+                  void patchEndpoint(ep.id, { env: next as "dev" | "prod" }).catch((err: unknown) =>
+                    toast(err instanceof Error ? err.message : "无法更改环境"),
+                  );
+                }}
+                list={[
+                  { value: "dev", label: "dev" },
+                  { value: "prod", label: "prod" },
+                ]}
+              />
               <Button as={Link} to={`/agent?endpoint=${ep.id}`}>
                 在对话中使用
               </Button>
@@ -154,7 +168,9 @@ export function McpDetailPage() {
                         />
                         <span>
                           {t.name}
-                          <div className="mono">{knowledgeBases.find((k) => k.id === t.kbId)?.name}</div>
+                          <div className="mono">
+                            {knowledgeBases.find((k) => k.id === t.kbId)?.name} · {evalStatus(t.eval)}
+                          </div>
                         </span>
                       </label>
                     ))
@@ -162,12 +178,15 @@ export function McpDetailPage() {
                 </Panel>
                 <Panel title="list 预览">
                   {listed.length === 0 ? (
-                    <Empty text="白名单为空。生产端点至少保留一把工具。" />
+                    <Empty text="白名单为空。生产端点至少保留一把已通过评测的工具。" />
                   ) : (
                     listed.map((t) => (
                       <div key={t.id} className="hit">
                         <Link to={`/tools/${t.id}`}>{t.name}</Link>
                         <div className="page-desc">{t.description}</div>
+                        <div className="mono">
+                          {evalStatus(t.eval)} · <Link to={`/eval?tool=${t.id}`}>评测</Link>
+                        </div>
                       </div>
                     ))
                   )}

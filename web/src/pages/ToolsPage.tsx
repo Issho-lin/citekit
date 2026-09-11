@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@chakra-ui/react";
 import { IconPlus } from "../components/icons";
+import { evalStatus } from "../evalStatus";
 import { ColorIcon } from "../components/ColorIcon";
 import { DataTable, Empty, PageHero } from "../components/chrome";
 import { useStore } from "../mock/store";
@@ -28,7 +29,7 @@ export function ToolsPage() {
         {tools.length === 0 ? (
           <Empty text="还没有检索工具。" to="/tools/new" cta="新建工具" />
         ) : (
-          <DataTable headers={["工具", "知识库", "检索范围", "MCP"]}>
+          <DataTable headers={["工具", "知识库", "检索范围", "评测", "MCP"]}>
             {tools.map((t) => {
               const n = endpoints.filter((e) => e.toolIds.includes(t.id)).length;
               const scope =
@@ -51,6 +52,7 @@ export function ToolsPage() {
                   </td>
                   <td>{knowledgeBases.find((k) => k.id === t.kbId)?.name}</td>
                   <td>{scope}</td>
+                  <td>{evalStatus(t.eval)}</td>
                   <td>{n === 0 ? "未发布" : `${n} 个端点`}</td>
                 </tr>
               );

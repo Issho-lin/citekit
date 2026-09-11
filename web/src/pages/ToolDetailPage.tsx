@@ -50,7 +50,7 @@ export function ToolDetailPage() {
   }
 
   const search = searchFromTool(tool);
-  const next = toolNext(tool.id, endpoints);
+  const next = toolNext(tool, endpoints);
   const schema = {
     name: tool.name,
     description: tool.description,
@@ -115,6 +115,9 @@ export function ToolDetailPage() {
                   查看端点
                 </Button>
               )}
+              <Button as={Link} to={`/eval?tool=${tool.id}`} variant="outline">
+                评测
+              </Button>
             </Flex>
           }
         />

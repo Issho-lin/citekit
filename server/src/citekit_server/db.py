@@ -158,6 +158,31 @@ class EvalCaseRow(Base):
     warehouse: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
 
+class EvalRunRow(Base):
+    __tablename__ = "eval_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String(40), index=True)
+    tool_id: Mapped[str] = mapped_column(String(32), ForeignKey("retrieval_tools.id"), index=True)
+    passed: Mapped[int] = mapped_column(Integer, default=0)
+    failed: Mapped[int] = mapped_column(Integer, default=0)
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    retrieve: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class EvalRunItemRow(Base):
+    __tablename__ = "eval_run_items"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(32), ForeignKey("eval_runs.id"), index=True)
+    case_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    query: Mapped[str] = mapped_column(Text, default="")
+    expect: Mapped[str] = mapped_column(String(255), default="")
+    ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    detail: Mapped[str] = mapped_column(Text, default="")
+    hits: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
 class ModelCallRow(Base):
     __tablename__ = "model_calls"
 
@@ -229,6 +254,10 @@ def ensure_schema() -> None:
                 conn.execute(text("ALTER TABLE kb_chunks ADD COLUMN answer TEXT NULL"))
             if "indexes" not in cols:
                 conn.execute(text("ALTER TABLE kb_chunks ADD COLUMN indexes JSON NULL"))
+        if "eval_runs" in names:
+            cols = {item["name"] for item in inspector.get_columns("eval_runs")}
+            if "retrieve" not in cols:
+                conn.execute(text("ALTER TABLE eval_runs ADD COLUMN retrieve JSON NULL"))
 
 
 def get_db():

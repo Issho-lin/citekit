@@ -409,6 +409,16 @@ class SearchConfigIn(BaseModel):
     filterFirst: bool = False
 
 
+class ToolEvalOut(BaseModel):
+    cases: int = 0
+    lastRunId: str | None = None
+    lastRunAt: str | None = None
+    passed: int = 0
+    failed: int = 0
+    total: int = 0
+    ok: bool | None = None
+
+
 class ToolOut(BaseModel):
     id: str
     name: str
@@ -419,6 +429,7 @@ class ToolOut(BaseModel):
     search: SearchConfigIn
     profile: str
     requiredFilters: list[str]
+    eval: ToolEvalOut = ToolEvalOut()
 
 
 class ToolIn(BaseModel):
@@ -491,14 +502,40 @@ class EvalCaseIn(BaseModel):
     warehouse: str | None = None
 
 
-class EvalRunItem(BaseModel):
+class EvalHitOut(BaseModel):
+    title: str = ""
+    locator: str = ""
+    score: float = 0
+
+
+class EvalRunItemOut(BaseModel):
     id: str
+    caseId: str | None = None
+    query: str = ""
+    expect: str = ""
     ok: bool
     detail: str
+    hits: list[EvalHitOut] = []
 
 
 class EvalRunOut(BaseModel):
-    items: list[EvalRunItem]
+    id: str
+    toolId: str
+    createdAt: str
+    passed: int
+    failed: int
+    total: int
+    ok: bool
+    retrieve: SearchConfigIn | None = None
+    items: list[EvalRunItemOut] = []
+
+
+class EvalRunIn(BaseModel):
+    toolId: str | None = None
+
+
+class EvalBatchRunOut(BaseModel):
+    runs: list[EvalRunOut]
     failed: int
 
 

@@ -2,6 +2,7 @@ import type {
   AiModel,
   Chunk,
   EvalCase,
+  EvalRun,
   KnowledgeBase,
   McpEndpoint,
   ModelCall,
@@ -254,13 +255,23 @@ export const api = {
     }),
   deleteEndpoint: (id: string) =>
     request<{ ok: boolean }>(`/api/mcp-endpoints/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  listEvalCases: () => request<EvalCase[]>("/api/eval-cases"),
+  listEvalCases: (toolId?: string) =>
+    request<EvalCase[]>(`/api/eval-cases${toolId ? `?toolId=${encodeURIComponent(toolId)}` : ""}`),
   createEvalCase: (body: { query: string; toolId: string; expect: string; warehouse?: string }) =>
     request<EvalCase>("/api/eval-cases", { method: "POST", body: JSON.stringify(body) }),
-  runEvalCases: () =>
-    request<{ items: { id: string; ok: boolean; detail: string }[]; failed: number }>("/api/eval-cases/run", {
+  deleteEvalCase: (id: string) =>
+    request<{ ok: boolean }>(`/api/eval-cases/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  runEvalCases: (toolId?: string) =>
+    request<{ runs: EvalRun[]; failed: number }>("/api/eval-cases/run", {
       method: "POST",
+      body: JSON.stringify(toolId ? { toolId } : {}),
     }),
+  listEvalRuns: (toolId?: string, limit = 8) => {
+    const query = new URLSearchParams();
+    if (toolId) query.set("toolId", toolId);
+    query.set("limit", String(limit));
+    return request<EvalRun[]>(`/api/eval-runs?${query.toString()}`);
+  },
   mcpRpc: (endpointId: string, apiKey: string, body: unknown) =>
     request<McpRpc>(`/mcp/${encodeURIComponent(endpointId)}`, {
       method: "POST",

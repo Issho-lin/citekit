@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from citekit_server.db import EvalCaseRow, McpEndpointRow, ToolRow, get_db
-from citekit_server.ids import new_id
+from citekit_server.eval_logic import eval_summaries, get_run, list_runs, require_prod_ready, run_evals
 from citekit_server.schemas import (
+    EvalBatchRunOut,
     EvalCaseIn,
     EvalCaseOut,
-    EvalRunItem,
+    EvalRunIn,
     EvalRunOut,
     McpEndpointIn,
     McpEndpointOut,
@@ -84,7 +85,8 @@ def _require_tools(db: Session, tool_ids: list[str], *, allow_empty: bool = Fals
 @router.get("/tools", response_model=list[ToolOut])
 def list_tools(db: Session = Depends(get_db)) -> list[ToolOut]:
     rows = db.query(ToolRow).order_by(ToolRow.title).all()
-    return [tool_to_out(row) for row in rows]
+    summaries = eval_summaries(db, [row.id for row in rows])
+    return [tool_to_out(row, summaries.get(row.id)) for row in rows]
 
 
 @router.post("/tools", response_model=ToolOut)
@@ -123,7 +125,8 @@ def suggest_tool(body: ToolSuggestIn, db: Session = Depends(get_db)) -> ToolSugg
 
 @router.get("/tools/{tool_id}", response_model=ToolOut)
 def get_tool(tool_id: str, db: Session = Depends(get_db)) -> ToolOut:
-    return tool_to_out(require_tool(db, tool_id))
+    row = require_tool(db, tool_id)
+    return tool_to_out(row, eval_summaries(db, [row.id]).get(row.id))
 
 
 @router.patch("/tools/{tool_id}", response_model=ToolOut)
@@ -181,6 +184,8 @@ def create_endpoint(body: McpEndpointIn, db: Session = Depends(get_db)) -> McpEn
         raise HTTPException(400, "请填写名称")
     env = body.env if body.env in {"dev", "prod"} else "dev"
     tool_ids = _require_tools(db, body.toolIds)
+    if env == "prod":
+        require_prod_ready(db, tool_ids)
     row = McpEndpointRow(
         id=new_id("mcp"),
         name=name,
@@ -207,6 +212,8 @@ def patch_endpoint(
 ) -> McpEndpointOut:
     row = _require_endpoint(db, endpoint_id)
     data = body.model_dump(exclude_unset=True)
+    previous_env = row.env
+    previous_tools = list(row.tool_ids or [])
     if "name" in data and data["name"] is not None:
         name = data["name"].strip()
         if not name:
@@ -219,6 +226,10 @@ def patch_endpoint(
     if "toolIds" in data and data["toolIds"] is not None:
         row.tool_ids = _require_tools(db, data["toolIds"], allow_empty=True)
         flag_modified(row, "tool_ids")
+    next_tools = list(row.tool_ids or [])
+    added = [item for item in next_tools if item not in previous_tools]
+    if row.env == "prod" and (previous_env != "prod" or added):
+        require_prod_ready(db, next_tools)
     db.commit()
     db.refresh(row)
     return _endpoint_out(row)
@@ -233,9 +244,11 @@ def delete_endpoint(endpoint_id: str, db: Session = Depends(get_db)) -> dict[str
 
 
 @router.get("/eval-cases", response_model=list[EvalCaseOut])
-def list_eval_cases(db: Session = Depends(get_db)) -> list[EvalCaseOut]:
-    rows = db.query(EvalCaseRow).order_by(EvalCaseRow.id.desc()).all()
-    return [_eval_out(row) for row in rows]
+def list_eval_cases(toolId: str | None = None, db: Session = Depends(get_db)) -> list[EvalCaseOut]:
+    q = db.query(EvalCaseRow).order_by(EvalCaseRow.id.desc())
+    if toolId:
+        q = q.filter(EvalCaseRow.tool_id == toolId)
+    return [_eval_out(row) for row in q.all()]
 
 
 @router.post("/eval-cases", response_model=EvalCaseOut)
@@ -268,33 +281,21 @@ def delete_eval_case(case_id: str, db: Session = Depends(get_db)) -> dict[str, b
     return {"ok": True}
 
 
-@router.post("/eval-cases/run", response_model=EvalRunOut)
-def run_eval_cases(db: Session = Depends(get_db)) -> EvalRunOut:
-    cases = db.query(EvalCaseRow).order_by(EvalCaseRow.id.desc()).all()
-    items: list[EvalRunItem] = []
-    for case in cases:
-        tool = db.get(ToolRow, case.tool_id)
-        if not tool:
-            items.append(EvalRunItem(id=case.id, ok=False, detail="工具不存在"))
-            continue
-        out = search_tool(db, tool, case.query, case.warehouse)
-        if out.message and not out.hits:
-            items.append(EvalRunItem(id=case.id, ok=False, detail=out.message))
-            continue
-        expect = case.expect
-        hit = any(
-            expect == item.chunk.locator or expect in (item.chunk.locator or "") or expect in (item.chunk.title or "")
-            for item in out.hits
-        )
-        items.append(
-            EvalRunItem(
-                id=case.id,
-                ok=hit,
-                detail=f"命中 {expect}" if hit else f"未命中，返回 {len(out.hits)} 条",
-            )
-        )
-    failed = sum(1 for item in items if not item.ok)
-    return EvalRunOut(items=items, failed=failed)
+@router.post("/eval-cases/run", response_model=EvalBatchRunOut)
+def run_eval_cases(body: EvalRunIn = EvalRunIn(), db: Session = Depends(get_db)) -> EvalBatchRunOut:
+    tool_id = (body.toolId or "").strip() or None
+    runs = run_evals(db, tool_id)
+    return EvalBatchRunOut(runs=runs, failed=sum(item.failed for item in runs))
+
+
+@router.get("/eval-runs", response_model=list[EvalRunOut])
+def list_eval_runs(toolId: str | None = None, limit: int = 10, db: Session = Depends(get_db)) -> list[EvalRunOut]:
+    return list_runs(db, toolId, limit)
+
+
+@router.get("/eval-runs/{run_id}", response_model=EvalRunOut)
+def get_eval_run(run_id: str, db: Session = Depends(get_db)) -> EvalRunOut:
+    return get_run(db, run_id)
 
 
 @router.get("/mcp-endpoints/{endpoint_id}/tools-list")

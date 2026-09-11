@@ -10,10 +10,10 @@ from sqlalchemy.orm.attributes import flag_modified
 from citekit_server.call_log import call_scope
 from citekit_server.chunking import parse_model_json
 from citekit_server.config import settings
-from citekit_server.db import AiModelRow, EvalCaseRow, KnowledgeBaseRow, McpEndpointRow, SourceRow, ToolRow
+from citekit_server.db import AiModelRow, KnowledgeBaseRow, McpEndpointRow, SourceRow, ToolRow
 from citekit_server.ingest import chat_model, resolve_auth
 from citekit_server.retrieve import search_kb
-from citekit_server.schemas import SearchConfigIn, SearchIn, SearchOut, ToolOut, ToolSuggestIn
+from citekit_server.schemas import SearchConfigIn, SearchIn, SearchOut, ToolEvalOut, ToolOut, ToolSuggestIn
 from citekit_server.upstream import chat_completion
 
 _TOOL_NAME = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{1,63}$")
@@ -33,7 +33,7 @@ def filters_of(_search: SearchConfigIn) -> list[str]:
     return []
 
 
-def tool_to_out(row: ToolRow) -> ToolOut:
+def tool_to_out(row: ToolRow, eval_summary: ToolEvalOut | None = None) -> ToolOut:
     search = search_config_of(row.search)
     return ToolOut(
         id=row.id,
@@ -45,6 +45,7 @@ def tool_to_out(row: ToolRow) -> ToolOut:
         search=search,
         profile=profile_of(search),
         requiredFilters=filters_of(search),
+        eval=eval_summary or ToolEvalOut(),
     )
 
 
@@ -295,7 +296,9 @@ def forget_tools_for_kbs(db: Session, kb_ids: list[str]) -> None:
     tool_ids = [row.id for row in tools]
     if not tool_ids:
         return
-    db.query(EvalCaseRow).filter(EvalCaseRow.tool_id.in_(tool_ids)).delete(synchronize_session=False)
+    from citekit_server.eval_logic import forget_eval_for_tools
+
+    forget_eval_for_tools(db, tool_ids)
     drop = set(tool_ids)
     for ep in db.query(McpEndpointRow).all():
         kept = [item for item in (ep.tool_ids or []) if item not in drop]
@@ -306,7 +309,9 @@ def forget_tools_for_kbs(db: Session, kb_ids: list[str]) -> None:
 
 
 def forget_tool(db: Session, tool_id: str) -> None:
-    db.query(EvalCaseRow).filter(EvalCaseRow.tool_id == tool_id).delete(synchronize_session=False)
+    from citekit_server.eval_logic import forget_eval_for_tools
+
+    forget_eval_for_tools(db, [tool_id])
     for ep in db.query(McpEndpointRow).all():
         ids = list(ep.tool_ids or [])
         if tool_id not in ids:

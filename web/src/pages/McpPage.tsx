@@ -2,12 +2,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@chakra-ui/react";
 import { IconPlus } from "../components/icons";
 import { ColorIcon } from "../components/ColorIcon";
+import { evalStatus } from "../evalStatus";
 import { DataTable, Empty, PageHero } from "../components/chrome";
 import { useStore } from "../mock/store";
 
 export function McpPage() {
   const nav = useNavigate();
-  const { endpoints, kbsReady } = useStore();
+  const { endpoints, kbsReady, tools } = useStore();
 
   if (!kbsReady) {
     return <div className="page" aria-busy="true" />;
@@ -28,8 +29,13 @@ export function McpPage() {
         {endpoints.length === 0 ? (
           <Empty text="还没有端点。" to="/mcp/new" cta="新建端点" />
         ) : (
-          <DataTable headers={["名称", "环境", "URL", "工具"]}>
-            {endpoints.map((ep) => (
+          <DataTable headers={["名称", "环境", "评测", "URL", "工具"]}>
+            {endpoints.map((ep) => {
+              const listed = ep.toolIds
+                .map((id) => tools.find((t) => t.id === id))
+                .filter((item): item is NonNullable<typeof item> => Boolean(item));
+              const blocked = listed.some((t) => t.eval?.ok !== true);
+              return (
               <tr key={ep.id} className="clickable" onClick={() => nav(`/mcp/${ep.id}`)}>
                 <td>
                   <div className="name-cell">
@@ -38,10 +44,18 @@ export function McpPage() {
                   </div>
                 </td>
                 <td>{ep.env}</td>
+                <td>
+                  {listed.length === 0
+                    ? "—"
+                    : ep.env === "prod" && !blocked
+                      ? "可发布"
+                      : listed.map((t) => evalStatus(t.eval)).join("；")}
+                </td>
                 <td className="mono">{ep.url}</td>
                 <td>{ep.toolIds.length}</td>
               </tr>
-            ))}
+              );
+            })}
           </DataTable>
         )}
       </div>

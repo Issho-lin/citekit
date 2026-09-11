@@ -43,10 +43,16 @@ export function kbNext(
   };
 }
 
-export function toolNext(toolId: string, endpoints: McpEndpoint[]): NextStep {
-  const published = endpoints.filter((e) => e.toolIds.includes(toolId));
+export function toolNext(tool: RetrievalTool, endpoints: McpEndpoint[]): NextStep {
+  const published = endpoints.filter((e) => e.toolIds.includes(tool.id));
+  if (!tool.eval?.cases) {
+    return { text: "先加评测用例并跑通，才能把 MCP 标成 prod。", to: `/eval?tool=${tool.id}`, cta: "去评测" };
+  }
+  if (tool.eval.ok !== true) {
+    return { text: "最近一次评测未通过，生产端点不会收这把工具。", to: `/eval?tool=${tool.id}`, cta: "去评测" };
+  }
   if (published.length === 0) {
-    return { text: "还没有 MCP 端点挂上这把工具。", to: `/mcp/new?tool=${toolId}`, cta: "发布端点" };
+    return { text: "评测已通过。还没有 MCP 端点挂上这把工具。", to: `/mcp/new?tool=${tool.id}`, cta: "发布端点" };
   }
   return {
     text: `已在 ${published.map((e) => e.name).join("、")} 白名单中。改契约后点「保存并重新发布」。`,

@@ -118,12 +118,50 @@ export interface Slice {
   version: string;
 }
 
+export interface ToolEval {
+  cases: number;
+  lastRunId?: string | null;
+  lastRunAt?: string | null;
+  passed: number;
+  failed: number;
+  total: number;
+  ok?: boolean | null;
+}
+
 export interface EvalCase {
   id: string;
   query: string;
   toolId: string;
   expect: string;
   warehouse?: string;
+}
+
+export interface EvalHit {
+  title: string;
+  locator: string;
+  score: number;
+}
+
+export interface EvalRunItem {
+  id: string;
+  caseId?: string | null;
+  query: string;
+  expect: string;
+  ok: boolean;
+  detail: string;
+  hits: EvalHit[];
+}
+
+export interface EvalRun {
+  id: string;
+  toolId: string;
+  createdAt: string;
+  passed: number;
+  failed: number;
+  total: number;
+  ok: boolean;
+  retrieve?: SearchConfig | null;
+  items: EvalRunItem[];
 }
 
 export interface RetrievalTool {
@@ -137,6 +175,7 @@ export interface RetrievalTool {
   search: SearchConfig;
   profile: RetrievalProfile;
   requiredFilters: string[];
+  eval?: ToolEval;
 }
 
 export interface McpEndpoint {

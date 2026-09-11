@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Checkbox, Input } from "@chakra-ui/react";
 import { Crumb, Empty, PageHero } from "../components/chrome";
 import { MySelect } from "../components/MySelect";
+import { evalStatus } from "../evalStatus";
 import { useStore } from "../mock/store";
 import { useToast } from "../components/Toast";
 
@@ -80,7 +81,9 @@ export function NewMcpPage() {
                   />
                   <span>
                     {t.title}
-                    <div className="mono">{t.name}</div>
+                    <div className="mono">
+                      {t.name} · {evalStatus(t.eval)}
+                    </div>
                   </span>
                 </label>
               ))}
