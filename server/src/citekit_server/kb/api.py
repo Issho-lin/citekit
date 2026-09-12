@@ -306,7 +306,8 @@ def create_source(
         locator = locator or uploaded.name
         title = title or uploaded.name
     source_type = body.type or ("manual" if raw_text and not file_id else "upload")
-    needs_train = bool(file_id or raw_text) and source_type != "folder"
+    web_url = source_type == "web" and locator.startswith(("http://", "https://"))
+    needs_train = bool(file_id or raw_text or web_url) and source_type != "folder"
     row = SourceRow(
         id=new_id("src"),
         kb_id=kb.id,

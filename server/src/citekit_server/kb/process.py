@@ -6,8 +6,10 @@ from citekit_server.calls.log import call_scope
 from citekit_server.kb.chunking import (
     Unit,
     child_indexes,
+    chunk_title,
     describe_process,
     has_heading,
+    heading_level,
     parse_qa_pairs,
     parse_string_list,
     split_parents,
@@ -88,7 +90,7 @@ def run_process(
         units = _extract_qa(parents, cfg, preview, llm, title, notes)
     else:
         for index, part in enumerate(parents, start=1):
-            heading = part.split("\n", 1)[0][:80] or f"{title} · 块 {index}"
+            heading = chunk_title(part, f"{title} · 块 {index}")
             unit = Unit(title=heading, text=part)
             for child in child_indexes(part, cfg):
                 unit.add_index("child", child)
@@ -105,7 +107,12 @@ def run_process(
     )
 
 
-def embed_items(unit: Unit, source_title: str, prefix_title: bool) -> list[tuple[str, str]]:
+def embed_items(
+    unit: Unit,
+    source_title: str,
+    prefix_title: bool,
+    index_chunk_title: bool = True,
+) -> list[tuple[str, str]]:
     prefix = (source_title or "").strip() if prefix_title else ""
 
     def wrap(text: str) -> str:
@@ -116,6 +123,17 @@ def embed_items(unit: Unit, source_title: str, prefix_title: bool) -> list[tuple
     children = [item["text"] for item in unit.indexes if item.get("type") == "child"]
     extras = [item for item in unit.indexes if item.get("type") != "child"]
     items: list[tuple[str, str]] = []
+    heading = (unit.title or "").strip()
+    body = (unit.text or "").strip()
+    # Optional extra vector for a real heading line, not a paragraph lead sentence.
+    if (
+        index_chunk_title
+        and heading
+        and heading_level(heading) is not None
+        and heading != body
+        and len(body) >= len(heading) + 40
+    ):
+        items.append(("title", wrap(heading)))
     if children:
         items.extend(("child", wrap(text)) for text in children)
     elif not any(item.get("type") == "default" for item in extras):

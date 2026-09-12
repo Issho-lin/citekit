@@ -211,6 +211,12 @@ def ingest_source(source_id: str) -> None:
 
         cfg = process_of(source)
         raw, stored, filename = source_file(db, source)
+        if not raw and not stored and source.type == "web":
+            from citekit_server.kb.web import fetch_web
+
+            raw = fetch_web(source.locator, cfg.webSelector)
+            source.raw_text = raw
+            db.commit()
         llm = chat_model(db, kb)
         vlm = vision_model(db, kb)
         with as_local_path(stored, filename) as path:
@@ -239,7 +245,9 @@ def ingest_source(source_id: str) -> None:
             chunk_id = new_uuid()
             units_with_id.append((chunk_id, unit))
             titles[chunk_id] = unit.title
-            for kind, text in embed_items(unit, source.title, cfg.indexPrefixTitle):
+            for kind, text in embed_items(
+                unit, source.title, cfg.indexPrefixTitle, cfg.indexChunkTitle
+            ):
                 texts.append(text)
                 meta.append((chunk_id, kind))
 
@@ -313,7 +321,7 @@ def reindex_chunk(db: Session, row: ChunkRow) -> None:
         answer=row.answer or "",
         indexes=list(row.indexes or []),
     )
-    items = embed_items(unit, source.title, cfg.indexPrefixTitle)
+    items = embed_items(unit, source.title, cfg.indexPrefixTitle, cfg.indexChunkTitle)
     delete_chunk_points(kb.id, row.id)
     if not items:
         return

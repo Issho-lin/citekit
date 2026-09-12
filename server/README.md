@@ -22,3 +22,21 @@ uv run citekit-server
 文档：http://127.0.0.1:8000/docs
 
 环境变量用 `CITEKIT_` 前缀，见 `.env.example`。
+
+## 数据库迁移
+
+表结构由 [Alembic](https://alembic.sqlalchemy.org/) 管理，启动时会执行 `alembic upgrade head`（等价于以前的 `create_all` + `ensure_schema`）。已有库第一次升级会写入 `alembic_version`，缺表缺列按基线补齐。
+
+```bash
+cd server
+uv run alembic current
+uv run alembic history
+uv run alembic upgrade head
+```
+
+改表时不要再改启动补丁，新增一版迁移：
+
+```bash
+uv run alembic revision -m "add_foo" --autogenerate
+# 检查 alembic/versions/ 里生成的脚本后再 upgrade
+```

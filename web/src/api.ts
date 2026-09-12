@@ -4,6 +4,8 @@ import type {
   EvalCase,
   EvalRun,
   KnowledgeBase,
+  McpCall,
+  McpCallSummary,
   McpEndpoint,
   ModelCall,
   ModelCallSummary,
@@ -221,6 +223,28 @@ export const api = {
   },
   getModelCall: (id: string) => request<ModelCall>(`/api/model-calls/${encodeURIComponent(id)}`),
   clearModelCalls: () => request<{ ok: boolean; deleted: number }>("/api/model-calls", { method: "DELETE" }),
+  listMcpCalls: (params?: {
+    endpointId?: string;
+    method?: string;
+    ok?: boolean;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.endpointId) query.set("endpointId", params.endpointId);
+    if (params?.method) query.set("method", params.method);
+    if (params?.ok !== undefined) query.set("ok", String(params.ok));
+    if (params?.from) query.set("from", params.from);
+    if (params?.to) query.set("to", params.to);
+    if (params?.limit != null) query.set("limit", String(params.limit));
+    if (params?.offset != null) query.set("offset", String(params.offset));
+    const suffix = query.toString();
+    return request<{ items: McpCallSummary[]; total: number }>(`/api/mcp-calls${suffix ? `?${suffix}` : ""}`);
+  },
+  getMcpCall: (id: string) => request<McpCall>(`/api/mcp-calls/${encodeURIComponent(id)}`),
+  clearMcpCalls: () => request<{ ok: boolean; deleted: number }>("/api/mcp-calls", { method: "DELETE" }),
   listTools: () => request<RetrievalTool[]>("/api/tools"),
   suggestTool: (body: { kbId: string; sourceIds?: string[]; excludeId?: string }) =>
     request<{ title: string; name: string; description: string }>("/api/tools/suggest", {
@@ -261,6 +285,8 @@ export const api = {
     request<EvalCase[]>(`/api/eval-cases${toolId ? `?toolId=${encodeURIComponent(toolId)}` : ""}`),
   createEvalCase: (body: { query: string; toolId: string; expect: string; warehouse?: string }) =>
     request<EvalCase>("/api/eval-cases", { method: "POST", body: JSON.stringify(body) }),
+  createEvalCaseFromMcp: (callId: string) =>
+    request<EvalCase>("/api/eval-cases/from-mcp-call", { method: "POST", body: JSON.stringify({ callId }) }),
   deleteEvalCase: (id: string) =>
     request<{ ok: boolean }>(`/api/eval-cases/${encodeURIComponent(id)}`, { method: "DELETE" }),
   runEvalCases: (toolId?: string) =>

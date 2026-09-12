@@ -466,10 +466,19 @@ function ChunkSettings({
             >
               <CheckLabel>将文档标题加入索引</CheckLabel>
             </Checkbox>
-            <QuestionTip label="向量化时在每条索引文本前加上数据集标题，便于按文档名召回。分块正文不会改。" />
+            <QuestionTip label="把这个文件/网页的名称拼到每条向量前面，不改正文、也不给模型多看字。适合问句里会提到文章名、文件名，而段落正文里不一定重复那几个字（例如新闻只有一个标题）。文件名是 scan_001.pdf 这类无意义名称时不要开。" />
           </HStack>
           {value.trainingType === "chunk" && (
             <>
+              <HStack spacing={1}>
+                <Checkbox
+                  isChecked={value.indexChunkTitle}
+                  onChange={(e) => patch({ indexChunkTitle: e.target.checked })}
+                >
+                  <CheckLabel>块标题单独索引</CheckLabel>
+                </Checkbox>
+                <QuestionTip label="识别到标题行（Markdown、第X章/节/条等）时，额外写一条标题向量，命中后仍返回整段。普通段落不会生成。新闻等只有文章名时用「将文档标题加入索引」。改完需重新训练。" />
+              </HStack>
               <HStack spacing={1}>
                 <Checkbox
                   isChecked={value.autoIndexes}

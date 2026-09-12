@@ -37,13 +37,6 @@ type Turn = {
 const MODEL_KEY = "citekit.chat.modelId";
 const ENDPOINTS_KEY = "citekit.chat.endpointIds";
 
-const SUGGESTIONS = [
-  "不满八周岁的未成年人实施民事法律行为，效力怎么认定？",
-  "向人民法院请求保护民事权利的诉讼时效期间是多久？",
-  "物业服务合同到期后，业主委员会可以做什么？",
-  "专项维修资金归谁所有，用在什么地方？",
-];
-
 function loadEndpointIds(fallback: string[]): string[] {
   try {
     const raw = localStorage.getItem(ENDPOINTS_KEY);
@@ -675,13 +668,6 @@ export function AgentPage() {
               </div>
               <h2>从一句真实业务问题开始</h2>
               <p>在下方选择模型与 MCP，Agent 会按白名单检索，回答里可点开编号查看原文定位。</p>
-              <div className="chat-suggestions">
-                {SUGGESTIONS.map((item) => (
-                  <button key={item} type="button" className="chat-suggestion" onClick={() => void send(item)}>
-                    {item}
-                  </button>
-                ))}
-              </div>
             </div>
           ) : (
             turns.map((turn, index) => (

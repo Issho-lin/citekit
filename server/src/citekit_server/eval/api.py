@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from citekit_server.db import EvalCaseRow, get_db
-from citekit_server.eval.logic import get_run, list_runs, run_evals
+from citekit_server.eval.logic import case_from_mcp_call, get_run, list_runs, run_evals
 from citekit_server.ids import new_id
 from citekit_server.schemas import (
     EvalBatchRunOut,
+    EvalCaseFromMcpIn,
     EvalCaseIn,
     EvalCaseOut,
     EvalRunIn,
@@ -54,6 +55,14 @@ def create_eval_case(body: EvalCaseIn, db: Session = Depends(get_db)) -> EvalCas
     db.commit()
     db.refresh(row)
     return _eval_out(row)
+
+
+@router.post("/eval-cases/from-mcp-call", response_model=EvalCaseOut)
+def create_eval_case_from_mcp(body: EvalCaseFromMcpIn, db: Session = Depends(get_db)) -> EvalCaseOut:
+    call_id = (body.callId or "").strip()
+    if not call_id:
+        raise HTTPException(400, "缺少调用记录")
+    return case_from_mcp_call(db, call_id)
 
 
 @router.delete("/eval-cases/{case_id}")

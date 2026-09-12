@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { Button } from "@chakra-ui/react";
+import { Button, HStack } from "@chakra-ui/react";
 import { IconPlus } from "../components/icons";
 import { ColorIcon } from "../components/ColorIcon";
 import { evalStatus } from "../evalStatus";
@@ -21,9 +21,14 @@ export function McpPage() {
           title="MCP 端点"
           desc="把检索工具挂到白名单。Agent 只能搜被勾选的工具，没有搜全部。"
           action={
+            <HStack spacing={2}>
+            <Button as={Link} to="/calls?kind=mcp" variant="outline">
+              调用记录
+            </Button>
             <Button as={Link} to="/mcp/new" leftIcon={<IconPlus />}>
               新建端点
             </Button>
+            </HStack>
           }
         />
         {endpoints.length === 0 ? (

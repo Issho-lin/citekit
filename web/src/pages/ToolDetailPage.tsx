@@ -16,7 +16,7 @@ import { Crumb, Empty, NextBar, PageHero, Panel } from "../components/chrome";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RetrievePlay } from "../components/RetrievePlay";
 import { ToolEditor, type ToolDraft } from "../components/ToolEditor";
-import { searchFromTool } from "../constants";
+import { searchFromKb } from "../constants";
 import { api } from "../api";
 import { toolNext } from "../mock/pipeline";
 import { useStore } from "../mock/store";
@@ -28,7 +28,7 @@ export function ToolDetailPage() {
   const toast = useToast();
   const del = useDisclosure();
   const rename = useDisclosure();
-  const { tools, knowledgeBases, sources, endpoints, kbsReady, updateTool, addToolToEndpoint, removeTool } =
+  const { tools, knowledgeBases, sources, endpoints, kbsReady, updateTool, updateKnowledgeBase, addToolToEndpoint, removeTool } =
     useStore();
   const tool = tools.find((t) => t.id === toolId);
   const kb = knowledgeBases.find((k) => k.id === tool?.kbId);
@@ -49,7 +49,7 @@ export function ToolDetailPage() {
     );
   }
 
-  const search = searchFromTool(tool);
+  const search = searchFromKb(kb);
   const next = toolNext(tool, endpoints);
   const schema = {
     name: tool.name,
@@ -153,9 +153,9 @@ export function ToolDetailPage() {
                   <p className="page-desc">保存后，已挂端点会按这份契约返回。</p>
                   <pre className="code">{JSON.stringify(schema, null, 2)}</pre>
                   <p className="page-desc" style={{ marginTop: 12 }}>
-                    当前策略：{modeLabel} · 相似度 {search.similarity} · 上限 {search.limit}
+                    当前策略：{modeLabel} · 相似度 {search.similarity} · top-k {search.limit}
                     {search.usingRerank ? " · 重排" : ""}
-                    。在「检索策略」里改会立即写入这把工具。
+                    。在知识库试检索里改策略，评测和本页共用。
                   </p>
                 </Panel>
               </Box>
@@ -197,13 +197,18 @@ export function ToolDetailPage() {
               </ConfirmDialog>
             </TabPanel>
             <TabPanel px={0}>
-              <Panel title="只搜勾选的集合，策略保存在这把工具上">
+              <Panel title="只搜勾选的集合，召回策略与知识库试检索相同">
                 <RetrievePlay
                   sourceIds={tool.sourceIds}
                   profile={tool.profile}
                   search={search}
                   onSearchChange={(nextSearch) => {
-                    void updateTool(tool.id, { search: nextSearch }).catch((err: unknown) =>
+                    void updateKnowledgeBase(kb.id, {
+                      searchMode: nextSearch.searchMode,
+                      similarity: nextSearch.similarity,
+                      limit: nextSearch.limit,
+                      usingRerank: nextSearch.usingRerank,
+                    }).catch((err: unknown) =>
                       toast(err instanceof Error ? err.message : "保存策略失败"),
                     );
                   }}

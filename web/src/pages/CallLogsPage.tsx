@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Button,
   HStack,
@@ -8,6 +8,11 @@ import {
   ModalContent,
   ModalHeader,
   ModalOverlay,
+  Tab,
+  TabList,
+  TabPanel,
+  TabPanels,
+  Tabs,
   Tooltip,
 } from "@chakra-ui/react";
 import { api } from "../api";
@@ -21,6 +26,7 @@ import { useToast } from "../components/Toast";
 import { MODEL_TYPE_META } from "../mock/models";
 import { usePageProgress } from "../progress";
 import type { ModelCall, ModelCallSummary } from "../types";
+import { McpCallLogs } from "./McpCallLogs";
 
 const PURPOSE_LABEL: Record<string, string> = {
   test: "连通测试",
@@ -175,6 +181,49 @@ function pageItems(page: number, pageCount: number): Array<number | "…"> {
 }
 
 export function CallLogsPage() {
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("kind") === "mcp" ? 1 : 0;
+
+  return (
+    <div className="page">
+      <div className="page-inner-wide">
+        <PageHero
+          title="调用记录"
+          desc={
+            tab === 1
+              ? "客户端打 MCP 端点会记在这里，默认看全部端点。握手、列工具、调工具和鉴权失败都会留下；ping 不算。只留最近 7 天、最多 2000 条。"
+              : "实际上游推理会记在这里，只留最近 7 天、最多 2000 条。点一行看请求和响应；成功的向量化只保留摘要和 Token，不存向量原文。"
+          }
+        />
+        <Tabs
+          isLazy
+          index={tab}
+          onChange={(next) => {
+            const nextParams = new URLSearchParams(params);
+            if (next === 1) nextParams.set("kind", "mcp");
+            else nextParams.delete("kind");
+            setParams(nextParams, { replace: true });
+          }}
+        >
+          <TabList>
+            <Tab>模型</Tab>
+            <Tab>MCP</Tab>
+          </TabList>
+          <TabPanels>
+            <TabPanel px={0}>
+              <ModelCallLogs />
+            </TabPanel>
+            <TabPanel px={0}>
+              <McpCallLogs />
+            </TabPanel>
+          </TabPanels>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
+
+function ModelCallLogs() {
   const toast = useToast();
   const [type, setType] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -256,13 +305,8 @@ export function CallLogsPage() {
   }
 
   return (
-    <div className="page">
-      <div className="page-inner-wide">
-        <PageHero
-          title="调用记录"
-          desc="实际上游推理会记在这里，只留最近 7 天、最多 2000 条。点一行看请求和响应；成功的向量化只保留摘要和 Token，不存向量原文。"
-          action={
-            <HStack spacing={2}>
+    <>
+      <HStack spacing={2} mb={3} justify="flex-end">
               <Button size="sm" variant="whiteBase" onClick={() => void load()} isLoading={loading}>
                 刷新
               </Button>
@@ -270,8 +314,6 @@ export function CallLogsPage() {
                 清空
               </Button>
             </HStack>
-          }
-        />
 
         <div className="call-filters">
           <MySelect
@@ -419,7 +461,6 @@ export function CallLogsPage() {
             ))}
           </DataTable>
         )}
-      </div>
 
       <Modal isOpen={Boolean(detail) || detailLoading} onClose={() => setDetail(null)} size="4xl" scrollBehavior="inside">
         <ModalOverlay />
@@ -446,7 +487,7 @@ export function CallLogsPage() {
       >
         会删除当前保存的全部模型调用记录，无法恢复。
       </ConfirmDialog>
-    </div>
+    </>
   );
 }
 

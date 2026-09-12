@@ -25,6 +25,16 @@ def search_config_of(raw: dict | None) -> SearchConfigIn:
     return data
 
 
+def search_from_kb(kb: KnowledgeBaseRow) -> SearchConfigIn:
+    """评测 / 工具试检索 / MCP 与知识库试检索用同一套召回参数。"""
+    return SearchConfigIn(
+        searchMode=kb.search_mode or "mix",
+        similarity=float(kb.similarity if kb.similarity is not None else 0.2),
+        limit=int(kb.limit or 20),
+        usingRerank=bool(kb.using_rerank),
+    )
+
+
 def profile_of(_search: SearchConfigIn) -> str:
     return "hybrid_balanced"
 
@@ -107,8 +117,8 @@ _META_PROMPT = """你是 MCP 检索工具的文案助手。根据知识库和勾
 
 只返回 JSON 对象，不要 markdown，不要解释。键必须是 title、name、description。
 
-title：给人看的中文短名，不超过 20 字，例如「民法典检索」
-name：英文调用名，以 search_ 开头，只能含小写字母、数字、下划线，长度 2 到 64，例如 search_civil_code。不要使用这些已占用名字：{taken}
+title：给人看的中文短名，不超过 20 字，例如「合同检索」
+name：英文调用名，以 search_ 开头，只能含小写字母、数字、下划线，长度 2 到 64，例如 search_contracts。不要使用这些已占用名字：{taken}
 description：给 Agent 看的中文，2 到 4 句，不超过 240 字。覆盖下面列出的全部集合，不要漏掉，也不要只写其中一份文件。若同库已有其他工具，写清本工具不覆盖什么；没有其他工具时不要虚构「去调用别的工具」。不要写调用方法、参数或示例问句堆砌。
 
 知识库：{kb}
@@ -255,8 +265,8 @@ def mcp_tool_list_item(row: ToolRow) -> dict:
 
 
 def search_tool(db: Session, tool: ToolRow, query: str, warehouse: str | None = None) -> SearchOut:
-    search = search_config_of(tool.search)
     kb = require_kb(db, tool.kb_id)
+    search = search_from_kb(kb)
     body = SearchIn(
         query=query,
         sourceIds=list(tool.source_ids or []),
@@ -264,6 +274,7 @@ def search_tool(db: Session, tool: ToolRow, query: str, warehouse: str | None = 
         similarity=search.similarity,
         limit=search.limit,
         usingRerank=search.usingRerank,
+        warehouse=warehouse,
     )
     return search_kb(db, kb, body)
 

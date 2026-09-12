@@ -1,6 +1,6 @@
 import unittest
 
-from citekit_server.kb.chunking import child_indexes, describe_process, split_parents
+from citekit_server.kb.chunking import child_indexes, chunk_title, describe_process, split_parents
 from citekit_server.schemas import ProcessConfigIn
 
 
@@ -81,6 +81,16 @@ class SplitParentsTest(unittest.TestCase):
         parts = split_parents(text, cfg)
         self.assertGreater(len(parts), 1)
         self.assertTrue(all(len(part) <= 400 for part in parts[:-1]))
+
+    def test_article_title_not_chapter_heading(self):
+        part = "\n".join(
+            [
+                "## 第二章　业主及业主大会",
+                "第六条　房屋的所有权人为业主。",
+                "业主在物业管理活动中，享有下列权利：",
+            ]
+        )
+        self.assertTrue(chunk_title(part).startswith("第六条"))
 
 
 class ChildIndexTest(unittest.TestCase):

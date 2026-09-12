@@ -1,11 +1,14 @@
+from citekit_server.kb.chunking import chunk_title
 from citekit_server.infra.protocol import protocol_of
 from citekit_server.secretbox import mask_secret
-from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, ModelCallRow, ProviderRow, SourceRow, WorkspaceRow
+from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, McpCallRow, ModelCallRow, ProviderRow, SourceRow, WorkspaceRow
 from citekit_server.schemas import (
     AiModelIn,
     AiModelOut,
     ChunkOut,
     KnowledgeBaseOut,
+    McpCallOut,
+    McpCallSummary,
     ModelCallOut,
     ModelCallSummary,
     ProcessConfigIn,
@@ -134,7 +137,7 @@ def chunk_to_out(row: ChunkRow) -> ChunkOut:
         id=row.id,
         sliceId="",
         sourceId=row.source_id,
-        title=row.title,
+        title=chunk_title(row.text or "", row.title or "") or row.title,
         text=row.text,
         locator=row.locator,
         a=row.answer,
@@ -171,3 +174,31 @@ def call_to_summary(row: ModelCallRow) -> ModelCallSummary:
 def call_to_out(row: ModelCallRow) -> ModelCallOut:
     data = call_to_summary(row).model_dump()
     return ModelCallOut(**data, request=row.request_body, response=row.response_body)
+
+
+def mcp_call_to_summary(row: McpCallRow) -> McpCallSummary:
+    return McpCallSummary(
+        id=row.id,
+        createdAt=row.created_at,
+        endpointId=row.endpoint_id,
+        endpointName=row.endpoint_name,
+        env=row.env,
+        method=row.method,
+        toolId=row.tool_id,
+        toolName=row.tool_name,
+        query=row.query or "",
+        warehouse=row.warehouse,
+        httpStatus=row.http_status,
+        ok=row.ok,
+        latencyMs=row.latency_ms,
+        error=row.error,
+        hitCount=row.hit_count,
+        summary=row.summary or "",
+        clientIp=row.client_ip or "",
+        clientRegion=row.client_region or "",
+    )
+
+
+def mcp_call_to_out(row: McpCallRow) -> McpCallOut:
+    data = mcp_call_to_summary(row).model_dump()
+    return McpCallOut(**data, request=row.request_body, response=row.response_body)

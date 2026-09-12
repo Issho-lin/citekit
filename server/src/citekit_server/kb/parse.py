@@ -21,6 +21,10 @@ def extract_text(path: str, name: str = "") -> str:
     return parse_file(path, name).text
 
 
+def html_to_text(raw: str) -> str:
+    return _strip_html(raw)
+
+
 def parse_file(path: str, name: str = "", *, render_pages: bool = False, collect_images: bool = False) -> ParseOut:
     suffix = Path(name or path).suffix.lower()
     file = Path(path)

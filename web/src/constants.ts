@@ -26,6 +26,7 @@ export const DEFAULT_PROCESS: ProcessConfig = {
   chunkTriggerType: "minSize",
   chunkTriggerMinSize: 100,
   indexPrefixTitle: false,
+  indexChunkTitle: true,
   autoIndexes: false,
   imageIndex: false,
   chunkSettingMode: "auto",

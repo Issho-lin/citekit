@@ -9,11 +9,12 @@ import { useToast } from "../components/Toast";
 import { api } from "../api";
 import type { EvalRun, SearchConfig } from "../types";
 import { evalStatus } from "../evalStatus";
+import { searchFromKb } from "../constants";
 
 function searchLabel(search?: SearchConfig | null) {
   if (!search) return "";
   const mode = search.searchMode === "embedding" ? "语义" : search.searchMode === "fullText" ? "全文" : "混合";
-  const bits = [`${mode}检索`, `召回 ${search.limit} 条`];
+  const bits = [`${mode}检索`, `top-k ${search.limit}`];
   if (search.usingRerank) bits.push("重排");
   return bits.join(" · ");
 }
@@ -29,7 +30,7 @@ function ResultBadge({ ok }: { ok: boolean | null }) {
 }
 
 export function EvalPage() {
-  const { evalCases, tools, kbsReady, addEvalCase, removeEvalCase, runEvalCases } = useStore();
+  const { evalCases, tools, knowledgeBases, kbsReady, addEvalCase, removeEvalCase, runEvalCases } = useStore();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const toolFilter = params.get("tool") || "";
@@ -40,6 +41,7 @@ export function EvalPage() {
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const formToolId = draftToolId || toolFilter || tools[0]?.id || "";
   const activeTool = tools.find((t) => t.id === (toolFilter || formToolId));
+  const activeKb = knowledgeBases.find((k) => k.id === activeTool?.kbId);
   const visible = toolFilter ? evalCases.filter((c) => c.toolId === toolFilter) : evalCases;
   const latestByTool = useMemo(() => {
     const map = new Map<string, EvalRun>();
@@ -68,7 +70,7 @@ export function EvalPage() {
     const failed = scoped.reduce((sum, run) => sum + run.failed, 0);
     const latest = toolFilter ? latestByTool.get(toolFilter) : scoped[0];
     const retrieve = latest?.retrieve;
-    const k = retrieve?.limit ?? (toolFilter ? activeTool?.search.limit : undefined);
+    const k = retrieve?.limit ?? (toolFilter && activeKb ? searchFromKb(activeKb).limit : undefined);
     return {
       passed,
       failed,
@@ -79,7 +81,7 @@ export function EvalPage() {
       ran: scoped.length > 0,
       ok: scoped.length > 0 && scoped.every((run) => run.ok) && total > 0,
     };
-  }, [activeTool, latestByTool, toolFilter]);
+  }, [activeKb, latestByTool, toolFilter]);
 
   useEffect(() => {
     if (toolFilter) setDraftToolId(toolFilter);
@@ -168,9 +170,9 @@ export function EvalPage() {
           />
           {activeTool && toolFilter ? (
             <p className="page-desc" style={{ margin: 0 }}>
-              {searchLabel(activeTool.search)}
-              {" · "}
-              <Link to={`/tools/${activeTool.id}`}>工具配置</Link>
+              {searchLabel(activeKb ? searchFromKb(activeKb) : undefined) || "与知识库试检索同一套召回"}
+              {" · 集合以工具勾选为准 · "}
+              <Link to={`/kb/${activeTool.kbId}`}>知识库试检索</Link>
             </p>
           ) : (
             <p className="page-desc" style={{ margin: 0 }}>
@@ -202,7 +204,7 @@ export function EvalPage() {
             <div className="k">本轮配置</div>
             <div className="v" style={{ fontSize: 15, lineHeight: 1.35 }}>
               {toolFilter
-                ? searchLabel(board.retrieve) || searchLabel(activeTool?.search) || "—"
+                ? searchLabel(board.retrieve) || (activeKb ? searchLabel(searchFromKb(activeKb)) : "") || "—"
                 : "各工具当时配置见历史"}
             </div>
             <div className="s">对照时看历史里配置是否一致</div>
@@ -221,11 +223,10 @@ export function EvalPage() {
             {visible.length === 0 ? (
               <Empty text="还没有题。先加几道手测确认过的问法。" />
             ) : (
-              <DataTable headers={["", "问句", "应召回", "实际召回", ""]}>
+              <DataTable className="eval-cases" headers={["", "问句", "应召回", "返回给模型", ""]}>
                 {visible.map((c) => {
                   const r = byCase.get(c.id);
                   const tool = tools.find((t) => t.id === c.toolId);
-                  const retrieved = (r?.hits || []).map((h) => h.title || h.locator).filter(Boolean);
                   const ok = r ? r.ok : null;
                   return (
                     <tr key={c.id} className={ok === false ? "eval-row-fail" : undefined}>
@@ -238,11 +239,24 @@ export function EvalPage() {
                       <td>
                         {r ? (
                           <div className="eval-hits">
-                            {retrieved.length ? retrieved.join("；") : "没有召回"}
+                            {(r.hits || []).length ? (
+                              <ol className="eval-hit-list">
+                                {(r.hits || []).map((h, i) => (
+                                  <li key={`${h.locator}-${i}`}>
+                                    <span className={`eval-hit-n eval-hit-n-${(i % 6) + 1}`}>{i + 1}</span>
+                                    <span>
+                                      {(h.title || h.locator || "未命名").replace(/[.…]+$/, "")}...
+                                    </span>
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              "没有返回"
+                            )}
                             {ok === false ? <div className="eval-sub">缺：{c.expect}</div> : null}
                           </div>
                         ) : (
-                          <span className="eval-sub">跑一遍后对照期望和实际召回</span>
+                          <span className="eval-sub">跑一遍后对照期望和最终 top-k</span>
                         )}
                       </td>
                       <td>
@@ -274,7 +288,7 @@ export function EvalPage() {
               <form className="eval-form" onSubmit={(e) => void onAdd(e)}>
                 <label>
                   用户会怎么问
-                  <Input placeholder="业主在物业管理活动中有哪些义务？" value={query} onChange={(e) => setQuery(e.target.value)} />
+                  <Input placeholder="用户会怎么问" value={query} onChange={(e) => setQuery(e.target.value)} />
                 </label>
                 <label>
                   用哪把工具搜
@@ -286,11 +300,11 @@ export function EvalPage() {
                 </label>
                 <label>
                   结果里必须出现
-                  <Input placeholder="例如 第七条" value={expect} onChange={(e) => setExpect(e.target.value)} />
+                  <Input placeholder="标题或定位，例如 文档标题 / file_xxx #8" value={expect} onChange={(e) => setExpect(e.target.value)} />
                 </label>
                 <Button type="submit">加入考卷</Button>
                 <p className="page-desc hint">
-                  应召回写标题或正文里的原话（条文号、文件名、关键句）。这是检索断言，不是标准答案全文。
+                  应召回须出现在最终返回给模型的 top-k 里（标题或定位）。短编号只认标题/定位，正文里顺带出现不算命中。这是检索断言，不是标准答案全文。
                 </p>
               </form>
             )}

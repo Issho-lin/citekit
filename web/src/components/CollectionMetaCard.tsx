@@ -19,6 +19,7 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
     { label: "处理方式", value: process.trainingType === "qa" ? "问答对提取" : "分块存储" },
     { label: "PDF 增强解析", value: yesNo(process.pdfEnhance) },
     { label: "将文档标题加入索引", value: yesNo(process.indexPrefixTitle) },
+    { label: "块标题单独索引", value: yesNo(process.indexChunkTitle) },
     { label: "自动生成补充索引", value: yesNo(process.autoIndexes) },
     { label: "图片自动索引", value: yesNo(process.imageIndex) },
     { label: "分块大小", value: process.chunkSize > 0 ? String(process.chunkSize) : "不限制" },

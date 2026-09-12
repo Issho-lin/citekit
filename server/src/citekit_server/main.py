@@ -8,7 +8,7 @@ from citekit_server.agent.api import router as agent_router
 from citekit_server.catalog.api import router as catalog_router
 from citekit_server.calls.api import router as calls_router
 from citekit_server.config import settings
-from citekit_server.db import Base, SessionLocal, UploadedFileRow, engine, ensure_schema
+from citekit_server.db import SessionLocal, UploadedFileRow, apply_migrations
 from citekit_server.eval.api import router as eval_router
 from citekit_server.kb.api import router as kb_router
 from citekit_server.tools.mcp import router as mcp_router
@@ -19,8 +19,7 @@ from citekit_server.infra.storage import ensure_bucket, migrate_local_uploads
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    Base.metadata.create_all(bind=engine)
-    ensure_schema()
+    apply_migrations()
     ensure_bucket()
     db = SessionLocal()
     try:

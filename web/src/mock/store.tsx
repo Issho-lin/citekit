@@ -112,6 +112,7 @@ interface Store {
   addToolToEndpoint: (endpointId: string, toolId: string) => Promise<void>;
   removeEndpoint: (id: string) => Promise<void>;
   addEvalCase: (input: { query: string; toolId: string; expect: string; warehouse?: string }) => Promise<void>;
+  addEvalCaseFromMcp: (callId: string) => Promise<EvalCase>;
   removeEvalCase: (id: string) => Promise<void>;
   runEvalCases: (toolId?: string) => Promise<{ runs: EvalRun[]; failed: number }>;
 }
@@ -401,6 +402,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         "chunkTriggerType",
         "chunkTriggerMinSize",
         "indexPrefixTitle",
+        "indexChunkTitle",
         "autoIndexes",
         "imageIndex",
         "chunkSettingMode",
@@ -551,6 +553,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setEndpoints((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
+  const addEvalCaseFromMcp = useCallback(async (callId: string) => {
+    const created = await api.createEvalCaseFromMcp(callId);
+    setEvalCases((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+    const toolList = await api.listTools();
+    setTools(toolList);
+    return created;
+  }, []);
+
   const addEvalCase = useCallback(
     async (input: { query: string; toolId: string; expect: string; warehouse?: string }) => {
       const created = await api.createEvalCase(input);
@@ -625,6 +635,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addToolToEndpoint,
       removeEndpoint,
       addEvalCase,
+      addEvalCaseFromMcp,
       removeEvalCase,
       runEvalCases,
     }),
@@ -677,6 +688,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addToolToEndpoint,
       removeEndpoint,
       addEvalCase,
+      addEvalCaseFromMcp,
       removeEvalCase,
       runEvalCases,
     ],

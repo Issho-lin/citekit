@@ -73,7 +73,7 @@ export function SearchParamsFields({
       </div>
       <FgSlider
         label="相似度"
-        tip="低于该分数的结果会被丢掉。调高更准但更容易搜空，调低更全但噪声更多。"
+        tip="只作用于向量召回：余弦低于该值的点不进融合。全文是 BM25，混合检索用 RRF（k=60）合两路排名，分数不再直接相加或取 max。"
         min={0}
         max={1}
         step={0.05}
@@ -82,7 +82,7 @@ export function SearchParamsFields({
       />
       <FgSlider
         label="引用上限"
-        tip="一次最多返回多少条给 Agent。太多会占上下文，太少可能漏依据。"
+        tip="最终返回条数，即 top-k，只截断排好序的名单。BM25/向量各取至少 50 条再融合；开重排时这 50 条全部送进 rerank，再截成 k 条。因此 k=3 与 k=20 的前三名应相同。"
         min={1}
         max={50}
         step={1}
@@ -201,7 +201,7 @@ export function RetrievePlay({
             <div key={h.chunk.id} className="hit-card">
               <div className="hit-card-top">
                 <strong>{h.chunk.title}</strong>
-                <span className="tag">{h.score.toFixed(2)}</span>
+                <span className="tag">{Math.abs(h.score) >= 1 ? h.score.toFixed(2) : h.score.toFixed(4)}</span>
               </div>
               {h.chunk.a ? (
                 <>

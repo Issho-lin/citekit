@@ -36,6 +36,7 @@ export interface ProcessConfig {
   chunkTriggerType: "minSize" | "maxSize" | "forceChunk";
   chunkTriggerMinSize: number;
   indexPrefixTitle: boolean;
+  indexChunkTitle: boolean;
   autoIndexes: boolean;
   imageIndex: boolean;
   chunkSettingMode: "auto" | "custom";
@@ -277,6 +278,32 @@ export interface ModelCallSummary {
 }
 
 export interface ModelCall extends ModelCallSummary {
+  request: unknown;
+  response: unknown;
+}
+
+export interface McpCallSummary {
+  id: string;
+  createdAt: string;
+  endpointId: string;
+  endpointName: string;
+  env: string;
+  method: string;
+  toolId?: string | null;
+  toolName: string;
+  query: string;
+  warehouse?: string | null;
+  httpStatus?: number | null;
+  ok: boolean;
+  latencyMs: number;
+  error?: string | null;
+  hitCount?: number | null;
+  summary: string;
+  clientIp?: string;
+  clientRegion?: string;
+}
+
+export interface McpCall extends McpCallSummary {
   request: unknown;
   response: unknown;
 }

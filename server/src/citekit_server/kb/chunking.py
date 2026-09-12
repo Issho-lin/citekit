@@ -216,6 +216,17 @@ def _heading_only_part(text: str) -> bool:
     return bool(lines) and all(_title_only_line(line) for line in lines)
 
 
+def chunk_title(part: str, fallback: str = "") -> str:
+    """Prefer 第X条 over a chapter/markdown heading glued onto the same parent."""
+    lines = [line.strip() for line in (part or "").splitlines() if line.strip()]
+    if not lines:
+        return (fallback or "未命名")[:80]
+    for line in lines:
+        if _ARTICLE.match(line):
+            return line[:80]
+    return lines[0][:80]
+
+
 def _attach_lonely_headings(parts: list[str]) -> list[str]:
     """Fold directory-style title-only sections into the next section that has body."""
     out: list[str] = []
@@ -290,6 +301,7 @@ def describe_process(cfg: ProcessConfigIn | None = None) -> str:
         name
         for flag, name in (
             (data.indexPrefixTitle, "文档标题加入索引"),
+            (data.indexChunkTitle, "块标题单独索引"),
             (data.autoIndexes, "补充索引"),
             (data.imageIndex, "图片索引"),
         )

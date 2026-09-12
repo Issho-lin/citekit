@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from fastapi import HTTPException
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from citekit_server.db import EvalCaseRow, EvalRunItemRow, EvalRunRow, ToolRow
 from citekit_server.ids import new_id
-from citekit_server.schemas import EvalHitOut, EvalRunItemOut, EvalRunOut, SearchConfigIn, ToolEvalOut
+from citekit_server.schemas import EvalCaseOut, EvalHitOut, EvalRunItemOut, EvalRunOut, SearchConfigIn, ToolEvalOut
 
 
 def _stamp() -> str:
@@ -29,17 +30,34 @@ def retrieve_label(search: SearchConfigIn | None) -> str:
     if not search:
         return ""
     mode = "语义" if search.searchMode == "embedding" else "全文" if search.searchMode == "fullText" else "混合"
-    bits = [f"{mode}检索", f"召回 {search.limit} 条"]
+    bits = [f"{mode}检索", f"top-k {search.limit}"]
     if search.usingRerank:
         bits.append("重排")
     return " · ".join(bits)
+
+
+_CITATION = re.compile(r"^第[零一二三四五六七八九十百千万0-9]+条")
 
 
 def expect_hit(expect: str, title: str, locator: str, text: str) -> bool:
     needle = (expect or "").strip()
     if not needle:
         return False
-    return needle == locator or needle in (locator or "") or needle in (title or "") or needle in (text or "")
+    loc = locator or ""
+    tit = title or ""
+    if needle == loc or needle in loc:
+        return True
+    if needle in tit:
+        return True
+    if _citation_only(needle):
+        return False
+    body = text or ""
+    return len(needle) >= 8 and needle in body
+
+
+def _citation_only(needle: str) -> bool:
+    compact = re.sub(r"\s+", "", needle)
+    return bool(_CITATION.fullmatch(compact)) and len(compact) <= 12
 
 
 def _item_out(row: EvalRunItemRow) -> EvalRunItemOut:
@@ -172,10 +190,10 @@ def get_run(db: Session, run_id: str) -> EvalRunOut:
 
 
 def run_tool_eval(db: Session, tool: ToolRow) -> EvalRunOut:
-    from citekit_server.tools.logic import search_config_of, search_tool
+    from citekit_server.tools.logic import require_kb, search_from_kb, search_tool
 
     cases = db.query(EvalCaseRow).filter(EvalCaseRow.tool_id == tool.id).order_by(EvalCaseRow.id.desc()).all()
-    search = search_config_of(tool.search)
+    search = search_from_kb(require_kb(db, tool.kb_id))
     run = EvalRunRow(
         id=new_id("erun"),
         created_at=_stamp(),
@@ -257,3 +275,97 @@ def forget_eval_for_tools(db: Session, tool_ids: list[str]) -> None:
         db.query(EvalRunItemRow).filter(EvalRunItemRow.run_id.in_(run_ids)).delete(synchronize_session=False)
         db.query(EvalRunRow).filter(EvalRunRow.id.in_(run_ids)).delete(synchronize_session=False)
     db.query(EvalCaseRow).filter(EvalCaseRow.tool_id.in_(tool_ids)).delete(synchronize_session=False)
+
+
+_LOCATOR_LINE = re.compile(r"^定位：\s*(.+)\s*$", re.M)
+
+
+def case_from_mcp_call(db: Session, call_id: str) -> EvalCaseOut:
+    from citekit_server.calls.tables import McpCallRow
+
+    row = db.get(McpCallRow, call_id)
+    if not row:
+        raise HTTPException(404, "调用记录不存在")
+    if row.method != "tools/call":
+        raise HTTPException(400, "只能从「调用工具」的记录出题")
+    if not row.tool_id:
+        raise HTTPException(400, "记录里没有工具，无法出题")
+    tool = db.get(ToolRow, row.tool_id)
+    if not tool:
+        raise HTTPException(400, "记录里的工具已删除")
+    query = (row.query or "").strip()
+    if not query:
+        raise HTTPException(400, "记录里没有问句")
+    expect = _expect_from_mcp_response(row.response_body)
+    if not expect:
+        raise HTTPException(400, "这次调用没有定位，无法自动填写应召回。请到评测页手写。")
+    if len(expect) > 255:
+        expect = expect[:255]
+    warehouse = _warehouse_from_mcp_request(row.request_body)
+    existing = (
+        db.query(EvalCaseRow)
+        .filter(
+            EvalCaseRow.tool_id == tool.id,
+            EvalCaseRow.query == query,
+            EvalCaseRow.expect == expect,
+        )
+        .first()
+    )
+    if existing:
+        return EvalCaseOut(
+            id=existing.id,
+            query=existing.query,
+            toolId=existing.tool_id,
+            expect=existing.expect,
+            warehouse=existing.warehouse,
+        )
+    case = EvalCaseRow(
+        id=new_id("ev"),
+        query=query,
+        tool_id=tool.id,
+        expect=expect,
+        warehouse=warehouse,
+    )
+    db.add(case)
+    db.commit()
+    db.refresh(case)
+    return EvalCaseOut(
+        id=case.id,
+        query=case.query,
+        toolId=case.tool_id,
+        expect=case.expect,
+        warehouse=case.warehouse,
+    )
+
+
+def _warehouse_from_mcp_request(body: object) -> str | None:
+    if not isinstance(body, dict):
+        return None
+    params = body.get("params") if isinstance(body.get("params"), dict) else {}
+    arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+    value = str(arguments.get("warehouse") or "").strip()
+    return value or None
+
+
+def _expect_from_mcp_response(body: object) -> str:
+    text = _mcp_response_text(body)
+    match = _LOCATOR_LINE.search(text)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def _mcp_response_text(body: object) -> str:
+    if not isinstance(body, dict):
+        return ""
+    result = body.get("result")
+    if not isinstance(result, dict):
+        return ""
+    content = result.get("content")
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for item in content:
+        if isinstance(item, dict) and isinstance(item.get("text"), str):
+            parts.append(item["text"])
+    return "\n".join(parts)
