@@ -1,6 +1,6 @@
 import unittest
 
-from citekit_server.eval.logic import expect_hit, retrieve_label, retrieve_of, retrieve_snapshot
+from citekit_server.eval.logic import expect_hit, retrieve_label, retrieve_of, retrieve_snapshot, retrieve_vector_error
 from citekit_server.schemas import SearchConfigIn
 
 
@@ -37,6 +37,13 @@ class RetrieveSnapshotTest(unittest.TestCase):
         self.assertEqual(retrieve_label(parsed), "混合检索 · top-k 5 · 重排")
         self.assertIsNone(retrieve_of(None))
         self.assertEqual(retrieve_label(None), "")
+        extra = {**snap, "vectorError": "embed timeout"}
+        parsed_extra = retrieve_of(extra)
+        self.assertIsNotNone(parsed_extra)
+        assert parsed_extra is not None
+        self.assertEqual(parsed_extra.searchMode, "mix")
+        self.assertEqual(retrieve_vector_error(extra), "embed timeout")
+        self.assertIsNone(retrieve_vector_error(snap))
 
 
 class McpExpectTest(unittest.TestCase):

@@ -12,7 +12,7 @@ import {
 import { useState } from "react";
 import { MySelect } from "../MySelect";
 import { QuestionTip } from "../QuestionTip";
-import { modelSelectList } from "../../mock/models";
+import { modelSelectOptions } from "./shared";
 import { useStore } from "../../mock/store";
 
 export function DefaultModelsModal({ onClose }: { onClose: () => void }) {
@@ -84,7 +84,7 @@ export function DefaultModelsModal({ onClose }: { onClose: () => void }) {
                 <MySelect
                   value={draft[f.key]}
                   onChange={(v) => setDraft((s) => ({ ...s, [f.key]: v }))}
-                  list={modelSelectList(aiModels, f.type, draft[f.key], f.none)}
+                  list={modelSelectOptions(aiModels, f.type, draft[f.key], f.none)}
                   placeholder={f.none ?? "请先启用该类模型"}
                 />
               </Box>

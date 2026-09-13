@@ -61,3 +61,8 @@ class SearchDebugTest(unittest.TestCase):
         debug = _search_debug({"b": Row()}, {}, {}, 0.2, fused, {"a"}, False)
         self.assertEqual(debug.dropped[0].locator, "file #2")
         self.assertIn("融合第 2", debug.dropped[0].reason)
+
+    def test_vector_error_kept_on_debug(self):
+        debug = _search_debug({}, {}, {}, 0.2, [], set(), False, "qdrant down")
+        self.assertEqual(debug.vectorCount, 0)
+        self.assertEqual(debug.vectorError, "qdrant down")

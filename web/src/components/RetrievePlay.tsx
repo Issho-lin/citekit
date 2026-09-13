@@ -248,11 +248,12 @@ export function RetrievePlay({
             </Alert>
           )}
           {debug ? (
-            <p className="hit-debug-summary">
+            <p className={debug.vectorError ? "hit-debug-summary is-warn" : "hit-debug-summary"}>
               全文 {debug.lexicalCount} · 向量 {debug.vectorCount}
               {debug.vectorDroppedCount ? `（${debug.vectorDroppedCount} 条低于阈值）` : ""}
               {debug.fusedCount ? ` · 融合 ${debug.fusedCount}` : ""}
               {debug.reranked ? " · 已重排" : ""}
+              {debug.vectorError ? ` · 向量失败：${debug.vectorError}` : ""}
             </p>
           ) : null}
           {hits.map((h) => {

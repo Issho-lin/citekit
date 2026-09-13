@@ -163,6 +163,7 @@ def _search_debug(
     fused: list[tuple[str, float, str]],
     final_ids: set[str],
     reranked: bool,
+    vector_error: str | None = None,
 ) -> SearchDebug:
     lex_rank, vec_rank, fused_rank, dropped_vec = _trace_maps(keyword, semantic, similarity, fused)
     dropped: list[SearchDropped] = []
@@ -196,6 +197,7 @@ def _search_debug(
         vectorDroppedCount=len(dropped_vec),
         fusedCount=len(fused),
         reranked=reranked,
+        vectorError=vector_error,
         dropped=dropped,
     )
 
@@ -233,6 +235,7 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
     by_id = {row.id: row for row in chunks}
     keyword: dict[str, float] = {}
     semantic: dict[str, tuple[float, str]] = {}
+    vector_error: str | None = None
     mode = body.searchMode or "mix"
     pool_n = max(body.limit, RETRIEVE_N)
 
@@ -250,6 +253,7 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             if mode == "embedding":
                 return SearchOut(hits=[], message=str(exc) or "语义检索失败")
             hits = []
+            vector_error = str(exc) or "语义检索失败"
         for hit in hits:
             payload = hit.payload or {}
             cid = str(payload.get("chunk_id") or hit.id)
@@ -278,13 +282,18 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
     fused = list(ranked)
     if not ranked:
         debug = (
-            _search_debug(by_id, keyword, semantic, body.similarity, fused, set(), False)
+            _search_debug(by_id, keyword, semantic, body.similarity, fused, set(), False, vector_error)
             if body.debug
             else None
         )
+        empty_msg = (
+            f"向量检索失败：{vector_error}"
+            if vector_error
+            else f"低于相似度 {body.similarity}，无召回。可调低阈值再试。"
+        )
         return SearchOut(
             hits=[],
-            message=f"低于相似度 {body.similarity}，无召回。可调低阈值再试。",
+            message=empty_msg,
             debug=debug,
         )
 
@@ -342,6 +351,7 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             fused,
             {cid for cid, _, _ in final},
             reranked,
+            vector_error,
         )
     return SearchOut(
         hits=[

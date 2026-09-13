@@ -90,6 +90,7 @@ export interface SearchDebug {
   vectorDroppedCount: number;
   fusedCount: number;
   reranked: boolean;
+  vectorError?: string | null;
   dropped: SearchDropped[];
 }
 
@@ -198,6 +199,7 @@ export interface EvalRun {
   total: number;
   ok: boolean;
   retrieve?: SearchConfig | null;
+  vectorError?: string | null;
   items: EvalRunItem[];
 }
 

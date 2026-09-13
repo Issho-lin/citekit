@@ -53,6 +53,7 @@ class EvalRunOut(BaseModel):
     total: int
     ok: bool
     retrieve: SearchConfigIn | None = None
+    vectorError: str | None = None
     items: list[EvalRunItemOut] = []
 
 

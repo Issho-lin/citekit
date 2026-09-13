@@ -40,6 +40,7 @@ class SearchDebug(BaseModel):
     vectorDroppedCount: int = 0
     fusedCount: int = 0
     reranked: bool = False
+    vectorError: str | None = None
     dropped: list[SearchDropped] = []
 
 

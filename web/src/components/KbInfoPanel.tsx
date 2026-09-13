@@ -16,7 +16,7 @@ import { ColorIcon, kbIcon } from "./ColorIcon";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { MySelect } from "./MySelect";
 import { IconEdit } from "./icons";
-import { modelSelectList } from "../mock/models";
+import { modelSelectOptions } from "./model/shared";
 import { useStore } from "../mock/store";
 import { useToast } from "./Toast";
 import type { KnowledgeBase } from "../types";
@@ -67,7 +67,7 @@ export function KbInfoPanel({ kb }: { kb: KnowledgeBase }) {
           <MySelect
             value={kb.vectorModel}
             onChange={(vectorModel) => updateKnowledgeBase(kb.id, { vectorModel })}
-            list={modelSelectList(aiModels, "embedding", kb.vectorModel)}
+            list={modelSelectOptions(aiModels, "embedding", kb.vectorModel)}
           />
         </label>
         <label>
@@ -75,7 +75,7 @@ export function KbInfoPanel({ kb }: { kb: KnowledgeBase }) {
           <MySelect
             value={kb.llmModel}
             onChange={(llmModel) => updateKnowledgeBase(kb.id, { llmModel })}
-            list={modelSelectList(aiModels, "llm", kb.llmModel)}
+            list={modelSelectOptions(aiModels, "llm", kb.llmModel)}
           />
         </label>
         <label>
@@ -83,7 +83,7 @@ export function KbInfoPanel({ kb }: { kb: KnowledgeBase }) {
           <MySelect
             value={kb.vlmModel}
             onChange={(vlmModel) => updateKnowledgeBase(kb.id, { vlmModel })}
-            list={modelSelectList(aiModels, "vlm", kb.vlmModel)}
+            list={modelSelectOptions(aiModels, "vlm", kb.vlmModel)}
           />
         </label>
         <label>
@@ -91,7 +91,7 @@ export function KbInfoPanel({ kb }: { kb: KnowledgeBase }) {
           <MySelect
             value={kb.rerankModel}
             onChange={(rerankModel) => updateKnowledgeBase(kb.id, { rerankModel })}
-            list={modelSelectList(aiModels, "rerank", kb.rerankModel, "不使用")}
+            list={modelSelectOptions(aiModels, "rerank", kb.rerankModel, "不使用")}
             placeholder="不使用"
           />
         </label>

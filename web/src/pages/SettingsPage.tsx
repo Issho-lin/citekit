@@ -4,6 +4,7 @@ import { PageHero, Panel } from "../components/chrome";
 import { ModelConfigTab } from "../components/model/ModelConfigTab";
 import { ProviderConfigTab } from "../components/model/ProviderConfigTab";
 import { DefaultModelsModal } from "../components/model/DefaultModelsModal";
+import { ModelLineIcon } from "../components/model/shared";
 import { useStore } from "../mock/store";
 
 type Tab = "models" | "providers" | "workspace";
@@ -60,10 +61,19 @@ export function SettingsPage() {
               }
             >
               <Flex direction="column" gap={2} fontSize="14px">
-                <Box>语言模型：{nameOf(llmModel)}</Box>
-                <Box>索引模型：{nameOf(vectorModel)}</Box>
-                <Box>图片理解：{nameOf(vlmModel)}</Box>
-                <Box>重排模型：{nameOf(rerankModel)}</Box>
+                {[
+                  ["语言模型", llmModel],
+                  ["索引模型", vectorModel],
+                  ["图片理解", vlmModel],
+                  ["重排模型", rerankModel],
+                ].map(([label, id]) => (
+                  <Flex key={label} align="center" gap={2}>
+                    <ModelLineIcon modelId={id} />
+                    <Box>
+                      {label}：{nameOf(id)}
+                    </Box>
+                  </Flex>
+                ))}
               </Flex>
             </Panel>
             <Panel title="查询策略">

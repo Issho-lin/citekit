@@ -1968,6 +1968,10 @@ body {
   color: #86909c;
 }
 
+.hit-debug-summary.is-warn {
+  color: #d25f00;
+}
+
 .hit-eval {
   position: absolute;
   right: 12px;

@@ -6,7 +6,7 @@ import { QuestionTip } from "./QuestionTip";
 import { ApiDatasetForm } from "./ApiDatasetForm";
 import { IconBook } from "./icons";
 import { KB_KINDS } from "../constants";
-import { modelSelectList } from "../mock/models";
+import { modelSelectOptions } from "./model/shared";
 import { useStore } from "../mock/store";
 import { useToast } from "./Toast";
 import type { ApiDatasetServer, KnowledgeBase } from "../types";
@@ -141,7 +141,7 @@ export function CreateKbForm({
             <MySelect
               value={vector}
               onChange={setVector}
-              list={modelSelectList(aiModels, "embedding", vector)}
+              list={modelSelectOptions(aiModels, "embedding", vector)}
               placeholder="请先启用索引模型"
             />
           </Box>
@@ -156,7 +156,7 @@ export function CreateKbForm({
             <MySelect
               value={agent}
               onChange={setAgent}
-              list={modelSelectList(aiModels, "llm", agent)}
+              list={modelSelectOptions(aiModels, "llm", agent)}
             />
           </Box>
         </Flex>
@@ -170,7 +170,7 @@ export function CreateKbForm({
             <MySelect
               value={vlm}
               onChange={setVlm}
-              list={modelSelectList(aiModels, "vlm", vlm)}
+              list={modelSelectOptions(aiModels, "vlm", vlm)}
             />
           </Box>
         </Flex>

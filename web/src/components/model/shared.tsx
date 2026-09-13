@@ -1,7 +1,8 @@
 import { Box, Image } from "@chakra-ui/react";
-import { typeMeta } from "../../mock/models";
+import { modelSelectList, typeMeta } from "../../mock/models";
 import { useStore } from "../../mock/store";
-import type { ModelProvider, ModelType } from "../../types";
+import type { AiModel, ModelProvider, ModelSlot, ModelType } from "../../types";
+import type { SelectOption } from "../MySelect";
 
 export function providerOf(providers: ModelProvider[], id: string): ModelProvider {
   return (
@@ -27,6 +28,25 @@ export function pickerProviders(providers: ModelProvider[], keepId?: string) {
 
 export function configProviders(providers: ModelProvider[]) {
   return pickerProviders(providers).filter((p) => p.id !== "Other");
+}
+
+export function modelSelectOptions(
+  models: AiModel[],
+  slot: ModelSlot,
+  current?: string,
+  noneLabel?: string,
+): SelectOption[] {
+  return modelSelectList(models, slot, current, noneLabel).map((item) => ({
+    ...item,
+    icon: item.value ? <ProviderAvatar provider={item.description || ""} size={16} /> : undefined,
+  }));
+}
+
+export function ModelLineIcon({ modelId, size = 16 }: { modelId: string; size?: number }) {
+  const { aiModels } = useStore();
+  const provider = aiModels.find((m) => m.model === modelId)?.provider;
+  if (!modelId || !provider) return null;
+  return <ProviderAvatar provider={provider} size={size} />;
 }
 
 export function ProviderAvatar({ provider, size = 20 }: { provider: string; size?: number }) {

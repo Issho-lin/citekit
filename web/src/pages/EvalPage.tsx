@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Box, Button, IconButton, Input } from "@chakra-ui/react";
+import { Alert, Box, Button, IconButton, Input } from "@chakra-ui/react";
 import { DataTable, Empty, PageHero, Panel } from "../components/chrome";
 import { MySelect } from "../components/MySelect";
 import { IconTrash } from "../components/icons";
@@ -60,6 +60,12 @@ export function EvalPage() {
     }
     return map;
   }, [runs]);
+  const vectorErrors = useMemo(() => {
+    const scoped = toolFilter
+      ? [latestByTool.get(toolFilter)].filter((item): item is EvalRun => Boolean(item))
+      : [...latestByTool.values()];
+    return [...new Set(scoped.map((run) => run.vectorError).filter((item): item is string => Boolean(item)))];
+  }, [latestByTool, toolFilter]);
   const byCase = useMemo(() => {
     const map = new Map<string, EvalRun["items"][number]>();
     for (const run of latestByTool.values()) {
@@ -190,6 +196,12 @@ export function EvalPage() {
             </p>
           )}
         </div>
+
+        {vectorErrors.map((err) => (
+          <Alert key={err} status="warning" mb={4}>
+            本轮混合检索的向量路失败，结果只来自全文：{err}
+          </Alert>
+        ))}
 
         <div className="eval-scoreboard">
           <div className="eval-metric">

@@ -26,6 +26,13 @@ def retrieve_snapshot(search: SearchConfigIn) -> dict:
     return search.model_dump()
 
 
+def retrieve_vector_error(raw: dict | None) -> str | None:
+    if not raw or not isinstance(raw, dict):
+        return None
+    note = str(raw.get("vectorError") or "").strip()
+    return note or None
+
+
 def retrieve_label(search: SearchConfigIn | None) -> str:
     if not search:
         return ""
@@ -99,6 +106,7 @@ def _item_out(row: EvalRunItemRow) -> EvalRunItemOut:
 
 
 def run_out(run: EvalRunRow, items: list[EvalRunItemRow] | None = None) -> EvalRunOut:
+    raw = run.retrieve if isinstance(getattr(run, "retrieve", None), dict) else None
     return EvalRunOut(
         id=run.id,
         toolId=run.tool_id,
@@ -107,7 +115,8 @@ def run_out(run: EvalRunRow, items: list[EvalRunItemRow] | None = None) -> EvalR
         failed=run.failed,
         total=run.total,
         ok=run.failed == 0 and run.total > 0,
-        retrieve=retrieve_of(run.retrieve if isinstance(getattr(run, "retrieve", None), dict) else None),
+        retrieve=retrieve_of(raw),
+        vectorError=retrieve_vector_error(raw),
         items=[_item_out(item) for item in (items or [])],
     )
 
@@ -220,6 +229,7 @@ def run_tool_eval(db: Session, tool: ToolRow) -> EvalRunOut:
     db.add(run)
     db.flush()
     items: list[EvalRunItemRow] = []
+    vector_error = ""
     if not cases:
         run.failed = 0
         db.commit()
@@ -227,6 +237,8 @@ def run_tool_eval(db: Session, tool: ToolRow) -> EvalRunOut:
         return run_out(run, [])
     for case in cases:
         out = search_tool(db, tool, case.query, case.warehouse, debug=True)
+        if out.debug and out.debug.vectorError:
+            vector_error = out.debug.vectorError
         hits = [_eval_hit(item) for item in out.hits]
         if out.message and not out.hits:
             ok = False
@@ -254,6 +266,10 @@ def run_tool_eval(db: Session, tool: ToolRow) -> EvalRunOut:
             run.passed += 1
         else:
             run.failed += 1
+    if vector_error:
+        snap = dict(run.retrieve or {})
+        snap["vectorError"] = vector_error
+        run.retrieve = snap
     db.commit()
     db.refresh(run)
     return run_out(run, items)
