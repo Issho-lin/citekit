@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from citekit_server.calls.log import call_scope
 from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, SourceRow
 from citekit_server.kb.ingest import embedding_model, resolve_auth
-from citekit_server.schemas import ChunkOut, SearchHit, SearchIn, SearchOut
+from citekit_server.schemas import HitTrace, SearchDebug, SearchDropped, SearchHit, SearchIn, SearchOut
 from citekit_server.serialize import chunk_to_out
 from citekit_server.infra.upstream import embed_texts, rerank_texts
 from citekit_server.infra.vectors import search as vector_search
@@ -116,6 +116,90 @@ def _rrf_merge(
     return scored
 
 
+def _trace_maps(
+    keyword: dict[str, float],
+    semantic: dict[str, tuple[float, str]],
+    similarity: float,
+    fused: list[tuple[str, float, str]],
+) -> tuple[dict[str, int], dict[str, int], dict[str, int], set[str]]:
+    lex_rank = _rank_map(keyword)
+    vec_rank = _rank_map({cid: score for cid, (score, _) in semantic.items()})
+    fused_rank = {cid: index + 1 for index, (cid, _, _) in enumerate(fused)}
+    dropped_vec = {cid for cid, (score, _) in semantic.items() if score < similarity}
+    return lex_rank, vec_rank, fused_rank, dropped_vec
+
+
+def _hit_trace(
+    cid: str,
+    *,
+    keyword: dict[str, float],
+    semantic: dict[str, tuple[float, str]],
+    lex_rank: dict[str, int],
+    vec_rank: dict[str, int],
+    fused_rank: dict[str, int],
+    dropped_vec: set[str],
+    fused_scores: dict[str, float],
+    rerank_scores: dict[str, float],
+) -> HitTrace:
+    vec_score, vec_kind = semantic.get(cid, (None, ""))
+    return HitTrace(
+        lexicalRank=lex_rank.get(cid),
+        lexicalScore=round(keyword[cid], 6) if cid in keyword else None,
+        vectorRank=vec_rank.get(cid),
+        vectorScore=round(vec_score, 6) if vec_score is not None else None,
+        vectorKind=vec_kind or "",
+        vectorDropped=cid in dropped_vec,
+        fusedRank=fused_rank.get(cid),
+        fusedScore=round(fused_scores[cid], 6) if cid in fused_scores else None,
+        rerankScore=round(rerank_scores[cid], 6) if cid in rerank_scores else None,
+    )
+
+
+def _search_debug(
+    by_id: dict[str, ChunkRow],
+    keyword: dict[str, float],
+    semantic: dict[str, tuple[float, str]],
+    similarity: float,
+    fused: list[tuple[str, float, str]],
+    final_ids: set[str],
+    reranked: bool,
+) -> SearchDebug:
+    lex_rank, vec_rank, fused_rank, dropped_vec = _trace_maps(keyword, semantic, similarity, fused)
+    dropped: list[SearchDropped] = []
+    seen: set[str] = set()
+
+    def add(cid: str, reason: str) -> None:
+        if cid in seen or cid in final_ids or cid not in by_id or len(dropped) >= 8:
+            return
+        seen.add(cid)
+        row = by_id[cid]
+        vec = semantic.get(cid)
+        dropped.append(
+            SearchDropped(
+                title=(row.title or "")[:80],
+                locator=row.locator or "",
+                reason=reason,
+                lexicalRank=lex_rank.get(cid),
+                vectorRank=vec_rank.get(cid),
+                vectorScore=round(vec[0], 6) if vec else None,
+            )
+        )
+
+    for cid in sorted(dropped_vec, key=lambda item: semantic[item][0], reverse=True):
+        add(cid, f"向量 {semantic[cid][0]:.4f} 低于阈值 {similarity:g}")
+    for cid, _, _ in fused:
+        if fused_rank.get(cid, 0) > 0 and cid not in final_ids:
+            add(cid, f"融合第 {fused_rank[cid]}，未进入本次返回")
+    return SearchDebug(
+        lexicalCount=len(keyword),
+        vectorCount=len(semantic),
+        vectorDroppedCount=len(dropped_vec),
+        fusedCount=len(fused),
+        reranked=reranked,
+        dropped=dropped,
+    )
+
+
 def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
     query = (body.query or "").strip()
     if not query:
@@ -191,9 +275,21 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             for cid, (score, kind) in sorted(semantic.items(), key=lambda item: item[1][0], reverse=True)
             if score >= body.similarity
         ]
+    fused = list(ranked)
     if not ranked:
-        return SearchOut(hits=[], message=f"低于相似度 {body.similarity}，无召回。可调低阈值再试。")
+        debug = (
+            _search_debug(by_id, keyword, semantic, body.similarity, fused, set(), False)
+            if body.debug
+            else None
+        )
+        return SearchOut(
+            hits=[],
+            message=f"低于相似度 {body.similarity}，无召回。可调低阈值再试。",
+            debug=debug,
+        )
 
+    reranked = False
+    rerank_scores: dict[str, float] = {}
     if body.usingRerank and kb.rerank_model:
         rerank_row = db.get(AiModelRow, kb.rerank_model)
         if rerank_row and rerank_row.type == "rerank":
@@ -207,18 +303,56 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             try:
                 with call_scope(purpose="rerank", kb_id=kb.id):
                     scores = rerank_texts(rerank_row, resolve_auth(db, rerank_row), query, docs)
+                rerank_scores = {window[i][0]: float(scores[i]) for i in range(len(window))}
                 ranked = [
                     (window[i][0], float(scores[i]), "混合召回后重排")
                     for i in sorted(range(len(window)), key=lambda i: float(scores[i]), reverse=True)
                 ]
+                reranked = True
             except Exception:
                 pass
 
-    ranked = ranked[: body.limit]
+    final = ranked[: body.limit]
+    traces: dict[str, HitTrace] = {}
+    debug = None
+    if body.debug:
+        lex_rank, vec_rank, fused_rank, dropped_vec = _trace_maps(
+            keyword, semantic, body.similarity, fused
+        )
+        fused_scores = {cid: score for cid, score, _ in fused}
+        traces = {
+            cid: _hit_trace(
+                cid,
+                keyword=keyword,
+                semantic=semantic,
+                lex_rank=lex_rank,
+                vec_rank=vec_rank,
+                fused_rank=fused_rank,
+                dropped_vec=dropped_vec,
+                fused_scores=fused_scores,
+                rerank_scores=rerank_scores,
+            )
+            for cid, _, _ in final
+        }
+        debug = _search_debug(
+            by_id,
+            keyword,
+            semantic,
+            body.similarity,
+            fused,
+            {cid for cid, _, _ in final},
+            reranked,
+        )
     return SearchOut(
         hits=[
-            SearchHit(chunk=chunk_to_out(by_id[cid]), score=round(score, 6), note=note)
-            for cid, score, note in ranked
+            SearchHit(
+                chunk=chunk_to_out(by_id[cid]),
+                score=round(score, 6),
+                note=note,
+                trace=traces.get(cid),
+            )
+            for cid, score, note in final
             if cid in by_id
-        ]
+        ],
+        debug=debug,
     )

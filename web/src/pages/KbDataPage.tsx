@@ -202,6 +202,9 @@ export function KbDataPage() {
               插入
             </Button>
           </Flex>
+          <Box px={6} pb={2} fontSize="sm" color="myGray.500">
+            块标题单独索引、文档名前缀改过后，需要重新训练，向量才会更新。
+          </Box>
 
           <Box px={6}>
             <div className="data-divider" />

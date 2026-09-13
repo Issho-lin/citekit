@@ -1,6 +1,6 @@
 import unittest
 
-from citekit_server.retrieve.logic import _bm25, _rrf_merge
+from citekit_server.retrieve.logic import _bm25, _rrf_merge, _search_debug
 
 
 class Bm25Test(unittest.TestCase):
@@ -31,3 +31,33 @@ class RrfMergeTest(unittest.TestCase):
         self.assertIn("keep", merged)
         self.assertNotIn("weak", merged)
         self.assertAlmostEqual(merged["keep"][0], 1 / 61)
+
+
+class SearchDebugTest(unittest.TestCase):
+    def test_vector_below_threshold_listed(self):
+        class Row:
+            title = "弱向量块"
+            locator = "file #9"
+
+        debug = _search_debug(
+            {"weak": Row()},
+            {},
+            {"weak": (0.41, "title")},
+            0.6,
+            [],
+            set(),
+            False,
+        )
+        self.assertEqual(debug.vectorDroppedCount, 1)
+        self.assertEqual(debug.dropped[0].locator, "file #9")
+        self.assertIn("低于阈值", debug.dropped[0].reason)
+
+    def test_fused_cut_by_topk_listed(self):
+        class Row:
+            title = "融合第2"
+            locator = "file #2"
+
+        fused = [("a", 0.03, "混合检索"), ("b", 0.02, "混合检索")]
+        debug = _search_debug({"b": Row()}, {}, {}, 0.2, fused, {"a"}, False)
+        self.assertEqual(debug.dropped[0].locator, "file #2")
+        self.assertIn("融合第 2", debug.dropped[0].reason)

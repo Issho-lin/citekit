@@ -47,7 +47,7 @@ from citekit_server.kb.schemas import (
     SourceOut,
     SourcePatch,
 )
-from citekit_server.retrieve.schemas import SearchHit, SearchIn, SearchOut
+from citekit_server.retrieve.schemas import HitTrace, SearchDebug, SearchDropped, SearchHit, SearchIn, SearchOut
 from citekit_server.tools.schemas import (
     McpEndpointIn,
     McpEndpointOut,
@@ -106,6 +106,9 @@ __all__ = [
     "ProviderPatch",
     "PublicKeyOut",
     "SearchConfigIn",
+    "HitTrace",
+    "SearchDebug",
+    "SearchDropped",
     "SearchHit",
     "SearchIn",
     "SearchOut",

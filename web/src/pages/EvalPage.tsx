@@ -24,6 +24,16 @@ function retrieveKey(search?: SearchConfig | null) {
   return `${search.searchMode}|${search.limit}|${search.usingRerank ? 1 : 0}|${search.similarity}`;
 }
 
+function hitRanks(h: { lexicalRank?: number | null; vectorRank?: number | null; vectorDropped?: boolean; fusedRank?: number | null; rerankScore?: number | null }) {
+  const bits: string[] = [];
+  if (h.lexicalRank != null) bits.push(`全文 #${h.lexicalRank}`);
+  if (h.vectorDropped) bits.push("向量低于阈值");
+  else if (h.vectorRank != null) bits.push(`向量 #${h.vectorRank}`);
+  if (h.fusedRank != null) bits.push(`融合 #${h.fusedRank}`);
+  if (h.rerankScore != null) bits.push(`重排 ${h.rerankScore.toFixed(4)}`);
+  return bits.join(" · ");
+}
+
 function ResultBadge({ ok }: { ok: boolean | null }) {
   if (ok === null) return <span className="eval-badge wait">未跑</span>;
   return <span className={`eval-badge ${ok ? "pass" : "fail"}`}>{ok ? "PASS" : "FAIL"}</span>;
@@ -246,6 +256,7 @@ export function EvalPage() {
                                     <span className={`eval-hit-n eval-hit-n-${(i % 6) + 1}`}>{i + 1}</span>
                                     <span>
                                       {(h.title || h.locator || "未命名").replace(/[.…]+$/, "")}...
+                                      {hitRanks(h) ? <div className="eval-hit-trace">{hitRanks(h)}</div> : null}
                                     </span>
                                   </li>
                                 ))}
@@ -300,11 +311,11 @@ export function EvalPage() {
                 </label>
                 <label>
                   结果里必须出现
-                  <Input placeholder="标题或定位，例如 文档标题 / file_xxx #8" value={expect} onChange={(e) => setExpect(e.target.value)} />
+                  <Input placeholder="定位优先，例如 file_xxx #8 或块标题" value={expect} onChange={(e) => setExpect(e.target.value)} />
                 </label>
                 <Button type="submit">加入考卷</Button>
                 <p className="page-desc hint">
-                  应召回须出现在最终返回给模型的 top-k 里（标题或定位）。短编号只认标题/定位，正文里顺带出现不算命中。这是检索断言，不是标准答案全文。
+                  应召回填命中的定位或标题。试检索悬停命中可点「加入评测」。短于 8 字只认标题/定位，正文里顺带出现不算命中。
                 </p>
               </form>
             )}

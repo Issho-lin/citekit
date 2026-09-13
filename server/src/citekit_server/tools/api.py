@@ -154,7 +154,7 @@ def delete_tool(tool_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
 @router.post("/tools/{tool_id}/search", response_model=SearchOut)
 def search_with_tool(tool_id: str, body: ToolSearchIn, db: Session = Depends(get_db)) -> SearchOut:
     tool = require_tool(db, tool_id)
-    return search_tool(db, tool, body.query, body.warehouse)
+    return search_tool(db, tool, body.query, body.warehouse, body.debug)
 
 
 @router.get("/mcp-endpoints", response_model=list[McpEndpointOut])

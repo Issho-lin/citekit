@@ -1,4 +1,4 @@
-import type { Chunk, RetrievalProfile, SearchConfig } from "../types";
+import type { Chunk, HitTrace, RetrievalProfile, SearchConfig, SearchDebug } from "../types";
 
 export interface RetrieveInput {
   sliceId?: string;
@@ -14,6 +14,7 @@ export interface Hit {
   chunk: Chunk;
   score: number;
   note: string;
+  trace?: HitTrace | null;
 }
 
 function scoreText(query: string, text: string): number {

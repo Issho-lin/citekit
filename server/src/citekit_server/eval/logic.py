@@ -36,9 +36,6 @@ def retrieve_label(search: SearchConfigIn | None) -> str:
     return " · ".join(bits)
 
 
-_CITATION = re.compile(r"^第[零一二三四五六七八九十百千万0-9]+条")
-
-
 def expect_hit(expect: str, title: str, locator: str, text: str) -> bool:
     needle = (expect or "").strip()
     if not needle:
@@ -49,15 +46,26 @@ def expect_hit(expect: str, title: str, locator: str, text: str) -> bool:
         return True
     if needle in tit:
         return True
-    if _citation_only(needle):
-        return False
-    body = text or ""
-    return len(needle) >= 8 and needle in body
-
-
-def _citation_only(needle: str) -> bool:
     compact = re.sub(r"\s+", "", needle)
-    return bool(_CITATION.fullmatch(compact)) and len(compact) <= 12
+    if len(compact) < 8:
+        return False
+    return needle in (text or "")
+
+
+def _eval_hit(item: object) -> dict:
+    chunk = getattr(item, "chunk", None)
+    trace = getattr(item, "trace", None)
+    return {
+        "title": getattr(chunk, "title", "") or "",
+        "locator": getattr(chunk, "locator", "") or "",
+        "score": float(getattr(item, "score", 0) or 0),
+        "lexicalRank": getattr(trace, "lexicalRank", None),
+        "vectorRank": getattr(trace, "vectorRank", None),
+        "vectorScore": getattr(trace, "vectorScore", None),
+        "vectorDropped": bool(getattr(trace, "vectorDropped", False)),
+        "fusedRank": getattr(trace, "fusedRank", None),
+        "rerankScore": getattr(trace, "rerankScore", None),
+    }
 
 
 def _item_out(row: EvalRunItemRow) -> EvalRunItemOut:
@@ -71,6 +79,12 @@ def _item_out(row: EvalRunItemRow) -> EvalRunItemOut:
                 title=str(item.get("title") or ""),
                 locator=str(item.get("locator") or ""),
                 score=float(item.get("score") or 0),
+                lexicalRank=item.get("lexicalRank"),
+                vectorRank=item.get("vectorRank"),
+                vectorScore=item.get("vectorScore"),
+                vectorDropped=bool(item.get("vectorDropped")),
+                fusedRank=item.get("fusedRank"),
+                rerankScore=item.get("rerankScore"),
             )
         )
     return EvalRunItemOut(
@@ -212,15 +226,8 @@ def run_tool_eval(db: Session, tool: ToolRow) -> EvalRunOut:
         db.refresh(run)
         return run_out(run, [])
     for case in cases:
-        out = search_tool(db, tool, case.query, case.warehouse)
-        hits = [
-            {
-                "title": item.chunk.title,
-                "locator": item.chunk.locator,
-                "score": item.score,
-            }
-            for item in out.hits
-        ]
+        out = search_tool(db, tool, case.query, case.warehouse, debug=True)
+        hits = [_eval_hit(item) for item in out.hits]
         if out.message and not out.hits:
             ok = False
             detail = out.message

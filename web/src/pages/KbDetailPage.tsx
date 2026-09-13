@@ -28,6 +28,7 @@ import { KbInfoPanel } from "../components/KbInfoPanel";
 import { RetrievePlay } from "../components/RetrievePlay";
 import { WebsiteConfigModal } from "../components/WebsiteConfigModal";
 import { FileSourceSelector } from "../import/FileSourceSelector";
+import { MySelect } from "../components/MySelect";
 import type { ImportSourceKind } from "../import/types";
 import { SOURCE_LABEL, searchFromKb } from "../constants";
 import { api } from "../api";
@@ -474,8 +475,12 @@ export function KbDetailPage() {
 }
 
 function KbSearchTest({ kbId, onlySourceId }: { kbId: string; onlySourceId?: string }) {
-  const { knowledgeBases, sources, chunks, updateKnowledgeBase } = useStore();
+  const { knowledgeBases, sources, chunks, tools, evalCases, updateKnowledgeBase, addEvalCase } = useStore();
+  const toast = useToast();
   const kb = knowledgeBases.find((k) => k.id === kbId);
+  const kbTools = tools.filter((t) => t.kbId === kbId);
+  const [evalToolId, setEvalToolId] = useState("");
+  const evalTool = kbTools.find((t) => t.id === evalToolId) || kbTools[0];
   const collections = useMemo(
     () => sources.filter((s) => s.kbId === kbId && s.type !== "folder"),
     [sources, kbId],
@@ -535,6 +540,17 @@ function KbSearchTest({ kbId, onlySourceId }: { kbId: string; onlySourceId?: str
           </>
         )}
       </div>
+      {kbTools.length > 1 ? (
+        <div className="field" style={{ marginBottom: 16 }}>
+          <span>加入评测时用哪把工具</span>
+          <MySelect
+            h="32px"
+            value={evalTool?.id || ""}
+            onChange={setEvalToolId}
+            list={kbTools.map((t) => ({ label: t.title, value: t.id }))}
+          />
+        </div>
+      ) : null}
       <RetrievePlay
         sourceIds={picked}
         search={searchFromKb(kb)}
@@ -557,9 +573,33 @@ function KbSearchTest({ kbId, onlySourceId }: { kbId: string; onlySourceId?: str
             similarity: search?.similarity,
             limit: search?.limit,
             usingRerank: search?.usingRerank,
+            debug: true,
           });
-          return { hits: result.hits, message: result.message ?? undefined };
+          return { hits: result.hits, message: result.message ?? undefined, debug: result.debug };
         }}
+        evalPins={(evalTool ? evalCases.filter((c) => c.toolId === evalTool.id) : []).map((c) => ({
+          query: c.query,
+          expect: c.expect,
+        }))}
+        onAddEval={
+          evalTool
+            ? async ({ query, title, locator }) => {
+                const expect = (locator || title || "").trim();
+                if (!query.trim() || !expect) {
+                  toast("请先检索，并选择有定位或标题的命中");
+                  return false;
+                }
+                try {
+                  await addEvalCase({ query: query.trim(), toolId: evalTool.id, expect });
+                  toast(`已写入「${evalTool.title}」：当前问句应召回 ${expect}`);
+                  return true;
+                } catch (err) {
+                  toast(err instanceof Error ? err.message : "加入评测失败");
+                  return false;
+                }
+              }
+            : undefined
+        }
       />
     </>
   );

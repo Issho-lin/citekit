@@ -26,6 +26,12 @@ class EvalHitOut(BaseModel):
     title: str = ""
     locator: str = ""
     score: float = 0
+    lexicalRank: int | None = None
+    vectorRank: int | None = None
+    vectorScore: float | None = None
+    vectorDropped: bool = False
+    fusedRank: int | None = None
+    rerankScore: float | None = None
 
 
 class EvalRunItemOut(BaseModel):

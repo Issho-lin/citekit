@@ -52,6 +52,7 @@ class ToolPatch(BaseModel):
 class ToolSearchIn(BaseModel):
     query: str
     warehouse: str | None = None
+    debug: bool = False
 
 
 class ToolSuggestIn(BaseModel):

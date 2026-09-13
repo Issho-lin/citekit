@@ -10,9 +10,10 @@ class ExpectHitTest(unittest.TestCase):
         self.assertTrue(expect_hit("file #8", "第七条", "file #8", "义务"))
         self.assertFalse(expect_hit("第七条", "第八条", "file #9", "业主大会"))
 
-    def test_short_article_not_body(self):
+    def test_short_phrase_not_body(self):
         self.assertFalse(expect_hit("第六条", "## 第二章", "file #7", "第六条　房屋的所有权人为业主"))
         self.assertTrue(expect_hit("第六条", "第六条　业主", "file #7", "其它条文也会写到第六条"))
+        self.assertFalse(expect_hit("业主", "第八条", "file #9", "业主应当履行物业管理义务"))
 
     def test_long_phrase_in_body(self):
         self.assertTrue(

@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { Alert, Button, Switch } from "@chakra-ui/react";
 import { SEARCH_MODES } from "../constants";
 import { retrieve, type Hit } from "../mock/retrieve";
-import type { Chunk, RetrievalProfile, SearchConfig } from "../types";
+import type { Chunk, HitTrace, RetrievalProfile, SearchConfig, SearchDebug } from "../types";
 import { Empty } from "./chrome";
 import { FgSlider } from "./FgSlider";
 import { IconSearch } from "./icons";
@@ -104,6 +104,46 @@ export function SearchParamsFields({
   );
 }
 
+function rankBit(label: string, rank?: number | null, extra?: string) {
+  if (rank == null && !extra) return null;
+  const n = rank != null ? `#${rank}` : "";
+  return extra ? `${label} ${n} ${extra}`.replace(/\s+/g, " ").trim() : `${label} ${n}`.trim();
+}
+
+function formatTrace(t: HitTrace) {
+  const bits: string[] = [];
+  const lex = rankBit("全文", t.lexicalRank);
+  if (lex) bits.push(lex);
+  if (t.vectorDropped && t.vectorScore != null) {
+    bits.push(`向量 ${t.vectorScore.toFixed(4)} 低于阈值`);
+  } else {
+    const vec = rankBit(
+      "向量",
+      t.vectorRank,
+      t.vectorScore != null ? t.vectorScore.toFixed(4) : undefined,
+    );
+    if (vec) bits.push(vec);
+  }
+  const fused = rankBit("融合", t.fusedRank);
+  if (fused) bits.push(fused);
+  if (t.rerankScore != null) bits.push(`重排 ${t.rerankScore.toFixed(4)}`);
+  return bits.join(" · ");
+}
+
+function pinnedHitIds(query: string, hits: Hit[], pins?: { query: string; expect: string }[]) {
+  if (!pins?.length) return [];
+  const nq = query.trim();
+  return hits
+    .filter((h) =>
+      pins.some((pin) => {
+        if (pin.query.trim() !== nq) return false;
+        const expect = pin.expect.trim();
+        return Boolean(expect && (h.chunk.locator.includes(expect) || h.chunk.title.includes(expect)));
+      }),
+    )
+    .map((h) => h.chunk.id);
+}
+
 export function RetrievePlay({
   sliceId,
   sliceIds,
@@ -115,6 +155,8 @@ export function RetrievePlay({
   defaultQuery = "",
   placeholder = "输入问题，测试检索",
   onRetrieve,
+  onAddEval,
+  evalPins,
 }: {
   sliceId?: string;
   sliceIds?: string[];
@@ -129,13 +171,18 @@ export function RetrievePlay({
     query: string;
     sourceIds?: string[];
     search?: SearchConfig;
-  }) => Promise<{ hits: Hit[]; message?: string }>;
+  }) => Promise<{ hits: Hit[]; message?: string; debug?: SearchDebug | null }>;
+  onAddEval?: (input: { query: string; title: string; locator: string }) => boolean | Promise<boolean>;
+  evalPins?: { query: string; expect: string }[];
 }) {
   const [query, setQuery] = useState(defaultQuery);
   const [hits, setHits] = useState<Hit[]>([]);
+  const [debug, setDebug] = useState<SearchDebug | null>(null);
   const [message, setMessage] = useState<string | undefined>();
   const [ran, setRan] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [addedIds, setAddedIds] = useState<string[]>([]);
   const [localSearch, setLocalSearch] = useState(search);
   const activeSearch = localSearch ?? search;
 
@@ -161,10 +208,13 @@ export function RetrievePlay({
             chunks,
           );
       setHits(result.hits);
+      setDebug(result.debug ?? null);
       setMessage(result.message);
+      setAddedIds(pinnedHitIds(query, result.hits, evalPins));
       setRan(true);
     } catch (err) {
       setHits([]);
+      setDebug(null);
       setMessage(err instanceof Error ? err.message : "检索失败");
       setRan(true);
     } finally {
@@ -197,12 +247,50 @@ export function RetrievePlay({
               {message}
             </Alert>
           )}
-          {hits.map((h) => (
-            <div key={h.chunk.id} className="hit-card">
+          {debug ? (
+            <p className="hit-debug-summary">
+              全文 {debug.lexicalCount} · 向量 {debug.vectorCount}
+              {debug.vectorDroppedCount ? `（${debug.vectorDroppedCount} 条低于阈值）` : ""}
+              {debug.fusedCount ? ` · 融合 ${debug.fusedCount}` : ""}
+              {debug.reranked ? " · 已重排" : ""}
+            </p>
+          ) : null}
+          {hits.map((h) => {
+            const added = addedIds.includes(h.chunk.id);
+            return (
+            <div key={h.chunk.id} className={["hit-card", onAddEval ? "has-eval" : "", added ? "is-added" : ""].filter(Boolean).join(" ")}>
               <div className="hit-card-top">
                 <strong>{h.chunk.title}</strong>
                 <span className="tag">{Math.abs(h.score) >= 1 ? h.score.toFixed(2) : h.score.toFixed(4)}</span>
               </div>
+              {onAddEval ? (
+                added ? (
+                  <span className="hit-eval is-done">已加入评测</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="hit-eval"
+                    disabled={addingId === h.chunk.id}
+                    onClick={() => {
+                      void (async () => {
+                        setAddingId(h.chunk.id);
+                        try {
+                          const ok = await onAddEval({
+                            query,
+                            title: h.chunk.title,
+                            locator: h.chunk.locator,
+                          });
+                          if (ok) setAddedIds((prev) => (prev.includes(h.chunk.id) ? prev : [...prev, h.chunk.id]));
+                        } finally {
+                          setAddingId(null);
+                        }
+                      })();
+                    }}
+                  >
+                    {addingId === h.chunk.id ? "加入中…" : "加入评测"}
+                  </button>
+                )
+              ) : null}
               {h.chunk.a ? (
                 <>
                   <p>
@@ -220,8 +308,10 @@ export function RetrievePlay({
               <div className="hit-card-meta">
                 {h.chunk.locator} · {h.note}
               </div>
+              {h.trace ? <div className="hit-card-trace">{formatTrace(h.trace)}</div> : null}
             </div>
-          ))}
+            );
+          })}
           {hits.length === 0 && !message && <Empty text="无命中。" />}
         </div>
       )}

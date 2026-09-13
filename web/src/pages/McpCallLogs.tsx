@@ -233,7 +233,7 @@ export function McpCallLogs() {
               "没有符合筛选条件的 MCP 调用。"
             ) : (
               <>
-                还没有 MCP 调用。Cursor 或其它客户端连上端点后会出现在这里，不必先打开某个端点。
+                还没有 MCP 调用。Cursor 或其它客户端连上端点后会出现在这里。成功的 tools/call 可点「加入考卷」。
               </>
             )
           }
@@ -338,7 +338,7 @@ export function McpCallLogs() {
                       void makeEval(row.id);
                     }}
                   >
-                    出题
+                    加入考卷
                   </Button>
                 ) : null}
               </td>
@@ -445,7 +445,7 @@ function McpCallDetail({
       </div>
       {call.method === "tools/call" ? (
         <Button size="sm" mb={4} onClick={onMakeEval} isLoading={making}>
-          做成评测题
+          做成评测题并加入考卷
         </Button>
       ) : null}
       {call.error ? <div className="call-error">{call.error}</div> : null}

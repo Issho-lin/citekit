@@ -63,6 +63,36 @@ export interface SearchConfig {
   filterFirst: boolean;
 }
 
+export interface HitTrace {
+  lexicalRank?: number | null;
+  lexicalScore?: number | null;
+  vectorRank?: number | null;
+  vectorScore?: number | null;
+  vectorKind?: string;
+  vectorDropped?: boolean;
+  fusedRank?: number | null;
+  fusedScore?: number | null;
+  rerankScore?: number | null;
+}
+
+export interface SearchDropped {
+  title: string;
+  locator: string;
+  reason: string;
+  lexicalRank?: number | null;
+  vectorRank?: number | null;
+  vectorScore?: number | null;
+}
+
+export interface SearchDebug {
+  lexicalCount: number;
+  vectorCount: number;
+  vectorDroppedCount: number;
+  fusedCount: number;
+  reranked: boolean;
+  dropped: SearchDropped[];
+}
+
 export interface ApiDatasetServer {
   apiServer?: { baseUrl: string; authorization?: string; basePath?: string };
   feishuServer?: { appId: string; appSecret: string; folderToken: string };
@@ -141,6 +171,12 @@ export interface EvalHit {
   title: string;
   locator: string;
   score: number;
+  lexicalRank?: number | null;
+  vectorRank?: number | null;
+  vectorScore?: number | null;
+  vectorDropped?: boolean;
+  fusedRank?: number | null;
+  rerankScore?: number | null;
 }
 
 export interface EvalRunItem {

@@ -264,7 +264,9 @@ def mcp_tool_list_item(row: ToolRow) -> dict:
     }
 
 
-def search_tool(db: Session, tool: ToolRow, query: str, warehouse: str | None = None) -> SearchOut:
+def search_tool(
+    db: Session, tool: ToolRow, query: str, warehouse: str | None = None, debug: bool = False
+) -> SearchOut:
     kb = require_kb(db, tool.kb_id)
     search = search_from_kb(kb)
     body = SearchIn(
@@ -275,6 +277,7 @@ def search_tool(db: Session, tool: ToolRow, query: str, warehouse: str | None = 
         limit=search.limit,
         usingRerank=search.usingRerank,
         warehouse=warehouse,
+        debug=debug,
     )
     return search_kb(db, kb, body)
 

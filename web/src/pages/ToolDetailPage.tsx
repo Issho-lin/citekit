@@ -28,7 +28,7 @@ export function ToolDetailPage() {
   const toast = useToast();
   const del = useDisclosure();
   const rename = useDisclosure();
-  const { tools, knowledgeBases, sources, endpoints, kbsReady, updateTool, updateKnowledgeBase, addToolToEndpoint, removeTool } =
+  const { tools, knowledgeBases, sources, endpoints, evalCases, kbsReady, updateTool, updateKnowledgeBase, addToolToEndpoint, removeTool, addEvalCase } =
     useStore();
   const tool = tools.find((t) => t.id === toolId);
   const kb = knowledgeBases.find((k) => k.id === tool?.kbId);
@@ -215,8 +215,26 @@ export function ToolDetailPage() {
                   chunks={[]}
                   placeholder="输入问题，测试这把工具的检索"
                   onRetrieve={async ({ query }) => {
-                    const result = await api.searchTool(tool.id, { query });
-                    return { hits: result.hits, message: result.message ?? undefined };
+                    const result = await api.searchTool(tool.id, { query, debug: true });
+                    return { hits: result.hits, message: result.message ?? undefined, debug: result.debug };
+                  }}
+                  evalPins={evalCases
+                    .filter((c) => c.toolId === tool.id)
+                    .map((c) => ({ query: c.query, expect: c.expect }))}
+                  onAddEval={async ({ query, title, locator }) => {
+                    const expect = (locator || title || "").trim();
+                    if (!query.trim() || !expect) {
+                      toast("请先检索，并选择有定位或标题的命中");
+                      return false;
+                    }
+                    try {
+                      await addEvalCase({ query: query.trim(), toolId: tool.id, expect });
+                      toast(`已写入评测：当前问句应召回 ${expect}`);
+                      return true;
+                    } catch (err) {
+                      toast(err instanceof Error ? err.message : "加入评测失败");
+                      return false;
+                    }
                   }}
                 />
               </Panel>

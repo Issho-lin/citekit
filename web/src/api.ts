@@ -14,6 +14,8 @@ import type {
   ProcessConfig,
   RetrievalTool,
   SearchConfig,
+  SearchDebug,
+  HitTrace,
   Source,
 } from "./types";
 import { encryptSecret } from "./encryptSecret";
@@ -191,9 +193,14 @@ export const api = {
       limit?: number;
       usingRerank?: boolean;
       warehouse?: string;
+      debug?: boolean;
     },
   ) =>
-    request<{ hits: { chunk: Chunk; score: number; note: string }[]; message?: string | null }>(
+    request<{
+      hits: { chunk: Chunk; score: number; note: string; trace?: HitTrace | null }[];
+      message?: string | null;
+      debug?: SearchDebug | null;
+    }>(
       `/api/kbs/${encodeURIComponent(kbId)}/search`,
       { method: "POST", body: JSON.stringify(body) },
     ),
@@ -266,8 +273,12 @@ export const api = {
     }),
   deleteTool: (id: string) =>
     request<{ ok: boolean }>(`/api/tools/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  searchTool: (id: string, body: { query: string; warehouse?: string }) =>
-    request<{ hits: { chunk: Chunk; score: number; note: string }[]; message?: string | null }>(
+  searchTool: (id: string, body: { query: string; warehouse?: string; debug?: boolean }) =>
+    request<{
+      hits: { chunk: Chunk; score: number; note: string; trace?: HitTrace | null }[];
+      message?: string | null;
+      debug?: SearchDebug | null;
+    }>(
       `/api/tools/${encodeURIComponent(id)}/search`,
       { method: "POST", body: JSON.stringify(body) },
     ),
