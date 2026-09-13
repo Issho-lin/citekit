@@ -20,6 +20,8 @@ from citekit_server.db import (
 from citekit_server.tools.logic import forget_tools_for_kbs
 from citekit_server.ids import new_id
 from citekit_server.kb.ingest import build_preview_from_kb, ingest_source, now_stamp, reindex_chunk
+from citekit_server.kb.sync import run_website_sync
+from citekit_server.kb.web import MAX_DEPTH, MAX_PAGES, normalize_url
 from citekit_server.retrieve.logic import search_kb
 from citekit_server.schemas import (
     FileOut,
@@ -29,6 +31,7 @@ from citekit_server.schemas import (
     OriginalFileText,
     PreviewIn,
     PreviewOut,
+    ProcessConfigIn,
     SearchIn,
     SearchOut,
     SourceIn,
@@ -36,6 +39,8 @@ from citekit_server.schemas import (
     SourcePatch,
     ChunkOut,
     ChunkPatch,
+    WebsiteSyncIn,
+    WebsiteSyncOut,
 )
 from citekit_server.serialize import chunk_to_out, kb_to_out, source_to_out
 from citekit_server.kb.parse import extract_text
@@ -276,6 +281,50 @@ def preview(kb_id: str, body: PreviewIn, db: Session = Depends(get_db)) -> Previ
             )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/kbs/{kb_id}/website-sync", response_model=WebsiteSyncOut)
+def website_sync(
+    kb_id: str,
+    body: WebsiteSyncIn,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> WebsiteSyncOut:
+    kb = _kb(db, kb_id)
+    url = normalize_url(body.url)
+    if not url:
+        raise HTTPException(400, "请填写有效的网站地址")
+    selector = (body.selector or "").strip()
+    kb.website_url = url
+    kb.website_selector = selector
+    seed = (
+        db.query(SourceRow)
+        .filter(SourceRow.kb_id == kb.id, SourceRow.type == "web", SourceRow.locator == url)
+        .one_or_none()
+    )
+    if seed is None:
+        db.add(
+            SourceRow(
+                id=new_id("src"),
+                kb_id=kb.id,
+                type="web",
+                title=url,
+                locator=url,
+                acl="internal",
+                status="syncing",
+                process=ProcessConfigIn(webSelector=selector).model_dump(),
+                updated_at=now_stamp(),
+                chunk_count=0,
+            )
+        )
+    else:
+        seed.status = "syncing"
+        seed.error_message = None
+        seed.process = ProcessConfigIn(webSelector=selector).model_dump()
+        seed.updated_at = now_stamp()
+    db.commit()
+    background.add_task(run_website_sync, kb.id)
+    return WebsiteSyncOut(ok=True, maxPages=MAX_PAGES, maxDepth=MAX_DEPTH)
 
 
 @router.get("/kbs/{kb_id}/sources", response_model=list[SourceOut])

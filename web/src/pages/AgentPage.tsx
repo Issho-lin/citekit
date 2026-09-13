@@ -50,7 +50,40 @@ function loadEndpointIds(fallback: string[]): string[] {
   return fallback;
 }
 
+function safeHttpUrl(href?: string | null): string | undefined {
+  if (!href) return undefined;
+  try {
+    const url = new URL(href);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.href;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function locatorHref(locator: string): string | undefined {
+  const match = locator.trim().match(/^(https?:\/\/\S+?)(?:\s+#\d+)?$/);
+  return match ? safeHttpUrl(match[1]) : undefined;
+}
+
+function MarkdownLink({
+  href,
+  children,
+}: {
+  href?: string;
+  children?: ReactNode;
+}) {
+  const url = safeHttpUrl(href);
+  if (!url) return <>{children}</>;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="chat-md-link">
+      {children}
+    </a>
+  );
+}
+
 function CiteChip({ cite }: { cite: AgentCitation }) {
+  const href = locatorHref(cite.locator);
   return (
     <Popover trigger="hover" placement="top" openDelay={120} closeDelay={80} isLazy gutter={8}>
       <PopoverTrigger>
@@ -73,8 +106,16 @@ function CiteChip({ cite }: { cite: AgentCitation }) {
               <span className="chat-cite-pop-index">{cite.id}</span>
               <strong>{cite.title}</strong>
             </div>
-            {cite.locator ? <div className="chat-cite-pop-loc">{cite.locator}</div> : null}
-            <div className="chat-cite-pop-text">{cite.text}</div>
+            {href ? (
+              <a className="chat-cite-pop-loc chat-md-link" href={href} target="_blank" rel="noreferrer">
+                打开原文
+              </a>
+            ) : cite.locator ? (
+              <div className="chat-cite-pop-loc">{cite.locator}</div>
+            ) : null}
+            <div className="chat-cite-pop-text">
+              <ReactMarkdown components={{ a: MarkdownLink }}>{cite.text}</ReactMarkdown>
+            </div>
             <div className="chat-cite-pop-meta">
               {cite.tool}
               {cite.score ? ` · 相关度 ${cite.score.toFixed(2)}` : ""}
@@ -144,6 +185,7 @@ function AnswerBody({
             em: ({ children }) => <em>{citeMarkdown(children, byId)}</em>,
             td: ({ children }) => <td>{citeMarkdown(children, byId)}</td>,
             th: ({ children }) => <th>{citeMarkdown(children, byId)}</th>,
+            a: ({ href, children }) => <MarkdownLink href={href}>{citeMarkdown(children, byId)}</MarkdownLink>,
           }}
         >
           {answerMarkdown(text)}
@@ -164,7 +206,7 @@ function ThinkingBody({ text }: { text: string }) {
   return (
     <div ref={boxRef} className="chat-thinking-body">
       <div className="chat-thinking-md">
-        <ReactMarkdown>{text}</ReactMarkdown>
+        <ReactMarkdown components={{ a: MarkdownLink }}>{text}</ReactMarkdown>
       </div>
     </div>
   );

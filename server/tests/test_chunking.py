@@ -1,6 +1,12 @@
 import unittest
 
-from citekit_server.kb.chunking import child_indexes, chunk_title, describe_process, split_parents
+from citekit_server.kb.chunking import (
+    child_indexes,
+    chunk_title,
+    describe_process,
+    index_text,
+    split_parents,
+)
 from citekit_server.schemas import ProcessConfigIn
 
 
@@ -92,6 +98,10 @@ class SplitParentsTest(unittest.TestCase):
         )
         self.assertTrue(chunk_title(part).startswith("第六条"))
 
+    def test_markdown_permalink_title_is_plain(self):
+        part = "## [\u200b](https://docs.example.com/guide#rules)规则说明\n正文若干字。"
+        self.assertEqual(chunk_title(part), "规则说明")
+
 
 class ChildIndexTest(unittest.TestCase):
     def test_off_by_default(self):
@@ -133,6 +143,32 @@ class ChildIndexTest(unittest.TestCase):
     def test_legacy_auto_stays_off(self):
         cfg = ProcessConfigIn.model_validate({"chunkSettingMode": "auto"})
         self.assertFalse(cfg.useChildIndex)
+
+    def test_child_split_uses_unwrapped_length(self):
+        sentence = "这是一句完整的说明。[详见](https://example.com/very/long/path)。"
+        parent = sentence * 40
+        cfg = ProcessConfigIn(
+            chunkSettingMode="custom",
+            useChildIndex=True,
+            indexSize=128,
+            chunkSize=1000,
+        )
+        kids = child_indexes(parent, cfg)
+        self.assertGreater(len(kids), 1)
+        joined = "".join(kids)
+        self.assertNotIn("http", joined)
+        self.assertIn("详见", joined)
+
+
+class IndexTextTest(unittest.TestCase):
+    def test_unwraps_links_and_images_keeps_markdown(self):
+        raw = "## 标题\n看[文档](https://example.com/a)和![图](https://cdn.example/x.png)。\n- 列表项 **加粗**"
+        out = index_text(raw)
+        self.assertEqual(
+            out,
+            "## 标题\n看文档和图。\n- 列表项 **加粗**",
+        )
+        self.assertNotIn("http", out)
 
 
 if __name__ == "__main__":

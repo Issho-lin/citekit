@@ -128,6 +128,17 @@ class SourceOut(BaseModel):
     hasOriginal: bool = False
 
 
+class WebsiteSyncIn(BaseModel):
+    url: str
+    selector: str = ""
+
+
+class WebsiteSyncOut(BaseModel):
+    ok: bool = True
+    maxPages: int
+    maxDepth: int
+
+
 class SourceIn(BaseModel):
     type: str = "upload"
     title: str

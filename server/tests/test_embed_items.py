@@ -38,3 +38,24 @@ class EmbedItemsTest(unittest.TestCase):
         unit = Unit(title="只有一句的段落。", text="只有一句的段落。")
         _, text = embed_items(unit, "防汛工作通报", True)[0]
         self.assertTrue(text.startswith("防汛工作通报\n"))
+
+    def test_permalink_heading_indexes_plain_title(self):
+        unit = Unit(
+            title="规则说明",
+            text="## 规则说明\n" + "后续说明文字。" * 40,
+        )
+        heading = next(text for kind, text in embed_items(unit, "", False) if kind == "title")
+        self.assertEqual(heading, "规则说明")
+        self.assertNotIn("http", heading)
+
+    def test_vector_unwraps_links_keeps_headings(self):
+        raw = "## 计费\n详见[价格](https://docs.example.com/pricing)与![表](https://cdn.example/t.png)。"
+        unit = Unit(title="", text=raw)
+        kinds = [kind for kind, _ in embed_items(unit, "", False)]
+        self.assertEqual(kinds, ["default"])
+        body = next(text for kind, text in embed_items(unit, "", False) if kind == "default")
+        self.assertIn("## 计费", body)
+        self.assertIn("价格", body)
+        self.assertIn("表", body)
+        self.assertNotIn("http", body)
+        self.assertEqual(unit.text, raw)

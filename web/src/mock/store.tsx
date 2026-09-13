@@ -71,6 +71,7 @@ interface Store {
     rerankModel?: string;
   }) => Promise<string>;
   updateKnowledgeBase: (id: string, patch: Partial<KnowledgeBase>) => Promise<void>;
+  syncWebsite: (kbId: string, input: { url: string; selector?: string }) => Promise<{ maxPages: number; maxDepth: number }>;
   removeKnowledgeBase: (id: string) => Promise<void>;
   addSlice: (input: {
     kbId: string;
@@ -304,6 +305,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setKnowledgeBases((prev) => prev.map((k) => (k.id === id ? updated : k)));
     },
     [],
+  );
+
+  const syncWebsite = useCallback(
+    async (kbId: string, input: { url: string; selector?: string }) => {
+      const result = await api.syncWebsite(kbId, input);
+      await reloadKbs();
+      return { maxPages: result.maxPages, maxDepth: result.maxDepth };
+    },
+    [reloadKbs],
   );
 
   const removeKnowledgeBase = useCallback(
@@ -615,6 +625,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateProvider,
       addKnowledgeBase,
       updateKnowledgeBase,
+      syncWebsite,
       removeKnowledgeBase,
       addSlice,
       rebuildSlice,
@@ -668,6 +679,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateProvider,
       addKnowledgeBase,
       updateKnowledgeBase,
+      syncWebsite,
       removeKnowledgeBase,
       addSlice,
       rebuildSlice,

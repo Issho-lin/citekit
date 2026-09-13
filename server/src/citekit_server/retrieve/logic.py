@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from citekit_server.calls.log import call_scope
 from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, SourceRow
+from citekit_server.kb.chunking import index_text
 from citekit_server.kb.ingest import embedding_model, resolve_auth
 from citekit_server.schemas import HitTrace, SearchDebug, SearchDropped, SearchHit, SearchIn, SearchOut
 from citekit_server.serialize import chunk_to_out
@@ -32,7 +33,7 @@ def _blob(row: ChunkRow) -> str:
                 bits.append(str(item.get("text") or ""))
             else:
                 bits.append(str(item))
-    return " ".join(bits)
+    return index_text(" ".join(bits))
 
 
 def _analyze(text: str) -> list[str]:

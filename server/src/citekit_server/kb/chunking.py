@@ -15,6 +15,24 @@ _DOT_NUM = re.compile(r"^(\d+(?:\.\d+){1,5})\s+\S")
 _ITEM_NUM = re.compile(r"^\d+[、.．]\s*\S")
 _CN_ITEM = re.compile(rf"^{_CN_NUM}、\S")
 _CN_PAREN = re.compile(rf"^[（(]{_CN_NUM}[）)]")
+_MD_IMAGE = re.compile(r"!\[([^\]]*?)\]\([^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]*?)\]\([^)]*\)")
+_ZW = re.compile(r"[\u200b\u200c\u200d\ufeff]")
+
+
+def index_text(text: str) -> str:
+    """Text used for embedding and BM25: unwrap links/images, keep other markdown."""
+    out = _MD_IMAGE.sub(lambda match: match.group(1).strip(), text or "")
+    return _MD_LINK.sub(lambda match: match.group(1).strip(), out)
+
+
+def index_label(line: str) -> str:
+    text = _ZW.sub("", (line or "").strip())
+    text = re.sub(r"^#{1,6}\s+", "", text)
+    text = index_text(text)
+    return re.sub(r"[ \t]+", " ", text).strip()
+
+
 _SENTENCE_END = re.compile(r"[。；;！？!?：:]$")
 _INLINE_HEADING = re.compile(
     rf"(?<=[。！？；!?;])\s*(?=第{_CN_NUM}(章|编|部分|节|条)\b|#{{1,6}}\s+\S)"
@@ -165,9 +183,10 @@ def child_indexes(parent: str, cfg: ProcessConfigIn | None = None) -> list[str]:
         return []
     if size > 0 and child >= size:
         return []
-    if len(parent) <= child:
+    plain = index_text(parent)
+    if len(plain) <= child:
         return []
-    packed = _pack(_split_for_index(parent, child), child, 0)
+    packed = _pack(_split_for_index(plain, child), child, 0)
     if len(packed) <= 1:
         return []
     return packed
@@ -208,7 +227,8 @@ def _title_only_line(line: str) -> bool:
         return False
     if any(mark in text for mark in "。！？!?"):
         return False
-    return len(text) <= 80
+    label = index_label(text)
+    return not label or len(label) <= 80
 
 
 def _heading_only_part(text: str) -> bool:
@@ -218,13 +238,14 @@ def _heading_only_part(text: str) -> bool:
 
 def chunk_title(part: str, fallback: str = "") -> str:
     """Prefer 第X条 over a chapter/markdown heading glued onto the same parent."""
-    lines = [line.strip() for line in (part or "").splitlines() if line.strip()]
-    if not lines:
+    labels = [index_label(line) for line in (part or "").splitlines()]
+    labels = [item for item in labels if item]
+    if not labels:
         return (fallback or "未命名")[:80]
-    for line in lines:
-        if _ARTICLE.match(line):
-            return line[:80]
-    return lines[0][:80]
+    for label in labels:
+        if _ARTICLE.match(label):
+            return label[:80]
+    return labels[0][:80]
 
 
 def _attach_lonely_headings(parts: list[str]) -> list[str]:

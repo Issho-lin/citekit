@@ -4,6 +4,7 @@ import html
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urljoin
 
 
 SUPPORTED = {".txt", ".md", ".markdown", ".html", ".htm", ".csv", ".pdf", ".docx"}
@@ -22,8 +23,8 @@ def extract_text(path: str, name: str = "") -> str:
     return parse_file(path, name).text
 
 
-def html_to_text(raw: str) -> str:
-    return _strip_html(raw)
+def html_to_text(raw: str, base_url: str = "") -> str:
+    return _strip_html(raw, base_url)
 
 
 def parse_file(path: str, name: str = "", *, render_pages: bool = False, collect_images: bool = False) -> ParseOut:
@@ -137,21 +138,67 @@ def _docx_heading_level(paragraph: object) -> int | None:
     return None
 
 
-def _strip_html(raw: str) -> str:
+_HREF_RE = re.compile(r"""href\s*=\s*(?:["']([^"']*)["']|([^\s>]+))""", re.I)
+_A_RE = re.compile(r"(?is)<a\b([^>]*)>(.*?)</a>")
+_ZW = re.compile(r"[\u200b\u200c\u200d\ufeff]")
+
+
+def _visible_text(raw: str) -> str:
+    text = re.sub(r"(?s)<[^>]+>", " ", raw or "")
+    text = html.unescape(text)
+    text = _ZW.sub("", text)
+    return " ".join(text.split())
+
+
+def _abs_href(href: str, base_url: str) -> str:
+    target = html.unescape(href).strip()
+    if not target or target.lower().startswith(("javascript:", "mailto:", "tel:", "data:")):
+        return ""
+    if target.startswith("#"):
+        return ""
+    return urljoin(base_url, target) if base_url else target
+
+
+def _rewrite_anchors(raw: str, base_url: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        found = _HREF_RE.search(match.group(1) or "")
+        text = _visible_text(match.group(2) or "")
+        href = ""
+        if found:
+            href = (found.group(1) or found.group(2) or "").strip()
+        url = _abs_href(href, base_url)
+        if not url:
+            return text or " "
+        return f"[{text or url}]({url})"
+
+    return _A_RE.sub(repl, raw)
+
+
+def _heading_text(inner: str) -> str:
+    text = re.sub(r"(?is)<button\b[^>]*>.*?</button>", " ", inner or "")
+    text = re.sub(r"(?is)<svg\b[^>]*>.*?</svg>", " ", text)
+    text = _A_RE.sub(lambda match: _visible_text(match.group(2) or "") or " ", text)
+    return _visible_text(text)
+
+
+def _strip_html(raw: str, base_url: str = "") -> str:
     text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", raw)
+    text = re.sub(r"(?is)<button\b[^>]*>.*?</button>", " ", text)
+    text = re.sub(r"(?is)<svg\b[^>]*>.*?</svg>", " ", text)
 
     def heading(match: re.Match[str]) -> str:
-        inner = re.sub(r"(?s)<[^>]+>", "", match.group(2))
-        inner = html.unescape(inner).strip()
+        inner = _heading_text(match.group(2))
         if not inner:
             return "\n"
         return f"\n{'#' * int(match.group(1))} {inner}\n"
 
     text = re.sub(r"(?is)<h([1-6])[^>]*>(.*?)</h\1>", heading, text)
+    text = _rewrite_anchors(text, base_url)
     text = re.sub(r"(?i)<br\s*/?>", "\n", text)
     text = re.sub(r"(?i)</p>", "\n\n", text)
     text = re.sub(r"(?s)<[^>]+>", " ", text)
     text = html.unescape(text)
+    text = _ZW.sub("", text)
     return re.sub(r"[ \t]+\n", "\n", re.sub(r"\n{3,}", "\n\n", text)).strip()
 
 

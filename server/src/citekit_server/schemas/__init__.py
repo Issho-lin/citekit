@@ -46,6 +46,8 @@ from citekit_server.kb.schemas import (
     SourceIn,
     SourceOut,
     SourcePatch,
+    WebsiteSyncIn,
+    WebsiteSyncOut,
 )
 from citekit_server.retrieve.schemas import HitTrace, SearchDebug, SearchDropped, SearchHit, SearchIn, SearchOut
 from citekit_server.tools.schemas import (
@@ -116,6 +118,8 @@ __all__ = [
     "SourceIn",
     "SourceOut",
     "SourcePatch",
+    "WebsiteSyncIn",
+    "WebsiteSyncOut",
     "TestOut",
     "ToolEvalOut",
     "ToolIn",

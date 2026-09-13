@@ -274,7 +274,7 @@ export function KbDetailPage() {
                     }
                   />
                 ) : kb.kind === "website" ? (
-                  <Empty text="您的站点可能非静态站点，无法同步" />
+                  <Empty text="正在抓取，或站点没有可抽取的静态页。稍后刷新；动态站点可能抓不到。" />
                 ) : (
                   <Empty text="数据集空空如也" />
                 )

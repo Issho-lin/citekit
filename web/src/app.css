@@ -4303,6 +4303,62 @@ body {
   font-weight: 650;
 }
 
+.chat-md-link {
+  color: #3370ff;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.chat-md-link:hover {
+  text-decoration: underline;
+}
+
+.md-preview {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #111824;
+  word-break: break-word;
+}
+
+.md-preview-empty {
+  color: #a0aec0;
+}
+
+.md-preview > :first-child {
+  margin-top: 0;
+}
+
+.md-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.md-preview p,
+.md-preview ul,
+.md-preview ol {
+  margin: 0 0 0.65em;
+}
+
+.md-preview p:last-child,
+.md-preview ul:last-child,
+.md-preview ol:last-child {
+  margin-bottom: 0;
+}
+
+.md-preview h1,
+.md-preview h2,
+.md-preview h3,
+.md-preview h4 {
+  margin: 0.4em 0 0.35em;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.md-preview ul,
+.md-preview ol {
+  padding-left: 1.25em;
+}
+
 .chat-cite-chip {
   appearance: none;
   display: inline-flex;
@@ -4385,8 +4441,15 @@ body {
   color: #4e5969;
   max-height: 180px;
   overflow: auto;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-cite-pop-text p {
+  margin: 0 0 0.5em;
+}
+
+.chat-cite-pop-text p:last-child {
+  margin-bottom: 0;
 }
 
 .chat-cite-pop-meta {

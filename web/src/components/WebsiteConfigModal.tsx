@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Input,
-  Link,
   Modal,
   ModalBody,
   ModalContent,
@@ -11,7 +10,6 @@ import {
   ModalHeader,
   ModalOverlay,
 } from "@chakra-ui/react";
-import { DEFAULT_PROCESS } from "../constants";
 import { useStore } from "../mock/store";
 import { useToast } from "./Toast";
 import type { KnowledgeBase } from "../types";
@@ -24,27 +22,28 @@ export function WebsiteConfigModal({
   onClose: () => void;
 }) {
   const toast = useToast();
-  const { updateKnowledgeBase, addSource } = useStore();
+  const { syncWebsite } = useStore();
   const [step, setStep] = useState(0);
   const [url, setUrl] = useState(kb.websiteUrl || "");
   const [selector, setSelector] = useState(kb.websiteSelector || "");
+  const [busy, setBusy] = useState(false);
   const isEdit = !!kb.websiteUrl;
 
-  function startSync() {
+  async function startSync() {
     if (!url.trim() || !/^https?:\/\//i.test(url.trim())) {
       toast("请填写有效的网站地址");
       return;
     }
-    updateKnowledgeBase(kb.id, {
-      websiteUrl: url.trim(),
-      websiteSelector: selector.trim(),
-    });
-    addSource(kb.id, "web", url.trim(), url.trim(), {
-      ...DEFAULT_PROCESS,
-      webSelector: selector.trim(),
-    });
-    toast("同步任务将随后开启");
-    onClose();
+    setBusy(true);
+    try {
+      const result = await syncWebsite(kb.id, { url: url.trim(), selector: selector.trim() });
+      toast(`已开始抓取同站静态页（最多 ${result.maxPages} 页、深度 ${result.maxDepth}）`);
+      onClose();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "同步失败");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -56,20 +55,13 @@ export function WebsiteConfigModal({
           {step === 0 ? (
             <>
               <Box fontSize="xs" color="myGray.900" bg="blue.50" p={4} borderRadius="8px">
-                Web 站点同步功能允许你填写一个网站的根地址，系统会自动深度抓取相关的网页进行知识库训练。仅会抓取静态的网站，以项目文档、博客为主。{" "}
-                <Link
-                  href="https://doc.fastgpt.io/docs/introduction/guide/knowledge_base/websync"
-                  isExternal
-                  textDecoration="underline"
-                  color="blue.700"
-                >
-                  查看教程
-                </Link>
+                从根地址开始抓取同站、同路径前缀下的静态 HTML，写成独立数据集再训练。动态站点、需要登录的页面抓不到。每次最多
+                50 页、深度 3 层。
               </Box>
               <Box mt={3}>
                 <Box mb={1}>根地址</Box>
                 <Input
-                  placeholder="Web 站点地址"
+                  placeholder="https://docs.example.com/guide"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                 />
@@ -77,7 +69,7 @@ export function WebsiteConfigModal({
               <Box mt={3}>
                 <Box mb={1}>选择器（选填）</Box>
                 <Input
-                  placeholder="body .content #document"
+                  placeholder="article .markdown-body"
                   value={selector}
                   onChange={(e) => setSelector(e.target.value)}
                 />
@@ -85,7 +77,7 @@ export function WebsiteConfigModal({
             </>
           ) : (
             <Box fontSize="sm" color="myGray.600">
-              将按当前知识库的默认数据处理参数开始同步站点内容。确认后会创建网页集合并开始抓取。
+              将按知识库默认切块参数抓取并训练。已存在的同一网址会覆盖正文后重新入库。
             </Box>
           )}
         </ModalBody>
@@ -110,10 +102,10 @@ export function WebsiteConfigModal({
             </>
           ) : (
             <>
-              <Button variant="whiteBase" onClick={() => setStep(0)}>
+              <Button variant="whiteBase" onClick={() => setStep(0)} isDisabled={busy}>
                 上一步
               </Button>
-              <Button ml={2} onClick={startSync}>
+              <Button ml={2} onClick={() => void startSync()} isLoading={busy}>
                 {isEdit ? "更新并同步" : "开始同步"}
               </Button>
             </>

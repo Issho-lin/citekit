@@ -13,6 +13,7 @@ import {
   Textarea,
 } from "@chakra-ui/react";
 import { IconPlus, IconTrash } from "./icons";
+import { MarkdownPreview } from "./MarkdownPreview";
 import { useToast } from "./Toast";
 import type { Chunk, ChunkIndex } from "../types";
 
@@ -37,6 +38,43 @@ function RequiredLabel({ children }: { children: string }) {
         *
       </Box>
       {children}
+    </Flex>
+  );
+}
+
+function ModeSwitch({
+  preview,
+  onChange,
+}: {
+  preview: boolean;
+  onChange: (preview: boolean) => void;
+}) {
+  return (
+    <Flex align="center" gap="2px" fontSize="12px" lineHeight="20px" color="myGray.500">
+      <Box
+        as="button"
+        type="button"
+        px="6px"
+        h="20px"
+        borderRadius="4px"
+        color={preview ? "myGray.500" : "primary.700"}
+        bg={preview ? "transparent" : "myGray.100"}
+        onClick={() => onChange(false)}
+      >
+        原文
+      </Box>
+      <Box
+        as="button"
+        type="button"
+        px="6px"
+        h="20px"
+        borderRadius="4px"
+        color={preview ? "primary.700" : "myGray.500"}
+        bg={preview ? "myGray.100" : "transparent"}
+        onClick={() => onChange(true)}
+      >
+        预览
+      </Box>
     </Flex>
   );
 }
@@ -83,6 +121,8 @@ export function InputDataModal({
   });
   const [saving, setSaving] = useState(false);
   const [focusId, setFocusId] = useState<string>();
+  const [previewQ, setPreviewQ] = useState(false);
+  const [previewA, setPreviewA] = useState(false);
 
   useEffect(() => {
     if (!focusId) return;
@@ -178,23 +218,41 @@ export function InputDataModal({
             <Flex flex="1" minH={0} gap="32px" flexDir={["column", "row"]}>
               <Flex flexDir="column" gap="8px" flex="1 0 0" w={["100%", 0]} minH={0}>
                 <Flex flexDir="column" flex="1 0 0" minH={0} gap="8px">
-                  <RequiredLabel>{tab === "chunk" ? "内容" : "问题"}</RequiredLabel>
-                  <Textarea
-                    {...textareaProps}
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder={tab === "chunk" ? "输入数据内容" : "输入问题"}
-                  />
+                  <Flex align="center" justify="space-between" h="20px" flexShrink={0}>
+                    <RequiredLabel>{tab === "chunk" ? "内容" : "问题"}</RequiredLabel>
+                    <ModeSwitch preview={previewQ} onChange={setPreviewQ} />
+                  </Flex>
+                  {previewQ ? (
+                    <Box {...textareaProps} overflow="auto">
+                      <MarkdownPreview text={q} empty={tab === "chunk" ? "暂无内容" : "暂无问题"} />
+                    </Box>
+                  ) : (
+                    <Textarea
+                      {...textareaProps}
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder={tab === "chunk" ? "输入数据内容" : "输入问题"}
+                    />
+                  )}
                 </Flex>
                 {tab === "qa" && (
                   <Flex flexDir="column" flex="1 0 0" minH={0} gap="8px">
-                    <RequiredLabel>答案</RequiredLabel>
-                    <Textarea
-                      {...textareaProps}
-                      value={a}
-                      onChange={(e) => setA(e.target.value)}
-                      placeholder="输入答案"
-                    />
+                    <Flex align="center" justify="space-between" h="20px" flexShrink={0}>
+                      <RequiredLabel>答案</RequiredLabel>
+                      <ModeSwitch preview={previewA} onChange={setPreviewA} />
+                    </Flex>
+                    {previewA ? (
+                      <Box {...textareaProps} overflow="auto">
+                        <MarkdownPreview text={a} empty="暂无答案" />
+                      </Box>
+                    ) : (
+                      <Textarea
+                        {...textareaProps}
+                        value={a}
+                        onChange={(e) => setA(e.target.value)}
+                        placeholder="输入答案"
+                      />
+                    )}
                   </Flex>
                 )}
               </Flex>

@@ -11,6 +11,8 @@ from citekit_server.kb.chunking import (
     describe_process,
     has_heading,
     heading_level,
+    index_label,
+    index_text,
     parse_qa_pairs,
     parse_string_list,
     split_parents,
@@ -172,20 +174,22 @@ def embed_items(
     prefix = (source_title or "").strip() if prefix_title else ""
 
     def wrap(text: str) -> str:
-        if prefix and not text.startswith(prefix):
-            return f"{prefix}\n{text}"
-        return text
+        body = index_text(text)
+        if prefix and not body.startswith(prefix):
+            return f"{prefix}\n{body}"
+        return body
 
     children = [item["text"] for item in unit.indexes if item.get("type") == "child"]
     extras = [item for item in unit.indexes if item.get("type") != "child"]
     items: list[tuple[str, str]] = []
-    heading = (unit.title or "").strip()
+    heading = index_label(unit.title or "") or (unit.title or "").strip()
     body = (unit.text or "").strip()
+    first = next((line.strip() for line in body.splitlines() if line.strip()), "")
     # Optional extra vector for a real heading line, not a paragraph lead sentence.
     if (
         index_chunk_title
         and heading
-        and heading_level(heading) is not None
+        and (heading_level(unit.title or "") is not None or heading_level(first) is not None)
         and heading != body
         and len(body) >= len(heading) + 40
     ):
