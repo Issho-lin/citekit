@@ -21,7 +21,7 @@ function needsModel(process: ProcessConfig) {
 }
 
 export function PreviewData() {
-  const { goToNext, sources, process, kbId } = useDatasetImport();
+  const { goToNext, sources, process, kbId, importSource } = useDatasetImport();
   const [previewFile, setPreviewFile] = useState<ImportSourceItemType | undefined>(sources[0]);
   const [result, setResult] = useState<PreviewResult | null>(null);
   const [tab, setTab] = useState<Tab>("chunks");
@@ -51,7 +51,7 @@ export function PreviewData() {
       .previewKb(kbId, {
         fileId: previewFile.dbFileId,
         rawText: previewFile.rawText,
-        process,
+        process: importSource === "imageDataset" ? { ...process, imageIndex: true } : process,
       })
       .then((next) => {
         if (cancelled) return;

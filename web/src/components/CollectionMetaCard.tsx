@@ -21,7 +21,12 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
     { label: "将文档标题加入索引", value: yesNo(process.indexPrefixTitle) },
     { label: "块标题单独索引", value: yesNo(process.indexChunkTitle) },
     { label: "自动生成补充索引", value: yesNo(process.autoIndexes) },
-    { label: "图片自动索引", value: yesNo(process.imageIndex) },
+    {
+      label: "图片自动索引",
+      value: process.imageIndex
+        ? { auto: "按图分流", transcribe: "转写文字", extract: "提取数据" }[process.imageIndexMode || "auto"]
+        : "No",
+    },
     { label: "分块大小", value: process.chunkSize > 0 ? String(process.chunkSize) : "不限制" },
     ...(process.chunkSettingMode === "custom" && process.chunkSplitMode === "size"
       ? [{ label: "分块重叠", value: String(process.chunkOverlap || 0) }]

@@ -405,6 +405,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         "indexChunkTitle",
         "autoIndexes",
         "imageIndex",
+        "imageIndexMode",
         "chunkSettingMode",
         "chunkSplitMode",
         "paragraphChunkAIMode",

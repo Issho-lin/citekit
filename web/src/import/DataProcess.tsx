@@ -60,6 +60,7 @@ export function DataProcess({
   const process = processProp ?? ctx?.process;
   const setProcess = onChange ?? ctx?.setProcess;
   const goToNext = onNext ?? ctx?.goToNext;
+  const imageOnly = ctx?.importSource === "imageDataset";
 
   if (!process || !setProcess) {
     throw new Error("DataProcess needs process state");
@@ -113,7 +114,14 @@ export function DataProcess({
 
         {goToNext ? (
           <Flex mt={5} gap={3} justifyContent="flex-end">
-            <Button onClick={goToNext}>下一步</Button>
+            <Button
+              onClick={() => {
+                if (imageOnly && !process.imageIndex) setProcess({ ...process, imageIndex: true });
+                goToNext();
+              }}
+            >
+              下一步
+            </Button>
           </Flex>
         ) : null}
       </Accordion>
@@ -384,6 +392,7 @@ function ChunkSettings({
   const knownSign = SPLIT_SIGNS.some((s) => s.value === splitter && s.value !== "Other");
   const [signPick, setSignPick] = useState(knownSign ? splitter : "Other");
   const parentChild = value.trainingType === "chunk" && value.useChildIndex;
+  const imageOnly = useDatasetImportOptional()?.importSource === "imageDataset";
 
   function patch(next: Partial<ProcessConfig>) {
     const merged = { ...value, ...next };
@@ -490,13 +499,47 @@ function ChunkSettings({
               </HStack>
               <HStack spacing={1}>
                 <Checkbox
-                  isChecked={value.imageIndex}
+                  isChecked={imageOnly ? true : value.imageIndex}
+                  isDisabled={imageOnly}
                   onChange={(e) => patch({ imageIndex: e.target.checked })}
                 >
                   <CheckLabel>图片自动索引</CheckLabel>
                 </Checkbox>
-                <QuestionTip label="使用视觉模型解析图片并写入索引。" />
+                <QuestionTip
+                  label={
+                    imageOnly
+                      ? "必须用视觉模型把图写成带段落的 Markdown，再按标题和空行切块。默认按图分流。"
+                      : "用视觉模型把图写成 Markdown 正文再切块。默认按图分流，也可指定只转写或只提取。"
+                  }
+                />
               </HStack>
+              {(imageOnly || value.imageIndex) && (
+                <Box w="100%" pl={1}>
+                  <MySelect
+                    value={value.imageIndexMode || "auto"}
+                    onChange={(next) =>
+                      patch({ imageIndexMode: next as ProcessConfig["imageIndexMode"] })
+                    }
+                    list={[
+                      {
+                        label: "按图分流",
+                        value: "auto",
+                        description: "文字截图转写原文；表格和图表提取数据",
+                      },
+                      {
+                        label: "按原文转写",
+                        value: "transcribe",
+                        description: "扫描件、白板、界面截图",
+                      },
+                      {
+                        label: "提取数据",
+                        value: "extract",
+                        description: "表格、可视化图表",
+                      },
+                    ]}
+                  />
+                </Box>
+              )}
             </>
           )}
         </Grid>

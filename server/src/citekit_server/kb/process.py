@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from citekit_server.calls.log import call_scope
 from citekit_server.kb.chunking import (
@@ -15,7 +16,7 @@ from citekit_server.kb.chunking import (
     split_parents,
 )
 from citekit_server.db import AiModelRow
-from citekit_server.kb.parse import ParseOut, parse_file
+from citekit_server.kb.parse import IMAGES, ParseOut, parse_file
 from citekit_server.schemas import ProcessConfigIn
 from citekit_server.infra.upstream import chat_completion
 
@@ -34,8 +35,52 @@ INDEX_PROMPT = (
     "为下面这段知识生成 3 到 6 条可用于检索的补充问法或关键词，覆盖同义说法和可能的用户问法。"
     "只返回 JSON 字符串数组。\n\n"
 )
-IMAGE_PROMPT = "用一两句话描述这张图里对检索有用的信息。只输出描述，不要前缀。"
+_IMAGE_MD = (
+    "只输出 Markdown 正文，不要前言、不要解释、不要用代码围栏包住全文。"
+    "能识别到标题就写成 Markdown 标题（# / ## / ###），或把原文标题单独成行。"
+    "段落之间空一行，列表用 - 或 1.，表格用 Markdown 表。"
+    "不要把整页挤成一段，后续会按标题和空行切块。"
+)
+IMAGE_PROMPT_AUTO = (
+    "先判断这张图主要是哪一类，再按该类把可见内容写成 Markdown。"
+    "不要写出类型名称，不要编造图上看不到的内容；看不清写〔不清〕。\n"
+    f"{_IMAGE_MD}\n"
+    "文字为主（文档截图、扫描件、白板、界面文案）：按原文转写，用标题和段落还原版面，不要总结成观感。\n"
+    "表格：用 Markdown 表还原表头和单元格，数字和单位原样保留，空单元格留空。\n"
+    "图表或可视化：先抄图上文字，再用若干段落写清图类型、坐标或图例、可核对的关键数字和对比/趋势。\n"
+    "照片、示意图或其它：先按段落抄可见文字，再补一小段画面里是什么。"
+)
+IMAGE_PROMPT_TRANSCRIBE = (
+    "这张图按文字稿处理。按原文转写所有可见文字，写成 Markdown。"
+    f"{_IMAGE_MD}"
+    "不要总结，不要改写。看不清写〔不清〕。"
+)
+IMAGE_PROMPT_EXTRACT = (
+    "这张图按数据资料处理，输出 Markdown。"
+    f"{_IMAGE_MD}"
+    "表格用 Markdown 表，数字和单位原样保留，空单元格留空。"
+    "图表先抄图上文字，再分若干段落写清图类型、图例或坐标、关键数字和对比/趋势。"
+    "不要编造图上看不到的数。"
+)
+IMAGE_PROMPT = IMAGE_PROMPT_AUTO
 QA_TAIL = "\n\n只返回 JSON 数组，每项包含 q 和 a。答案必须来自原文。"
+
+
+def image_prompt_for(mode: str) -> str:
+    if mode == "transcribe":
+        return IMAGE_PROMPT_TRANSCRIBE
+    if mode == "extract":
+        return IMAGE_PROMPT_EXTRACT
+    return IMAGE_PROMPT_AUTO
+
+
+def join_image_markdown(captions: list[str]) -> str:
+    bodies = [item.strip() for item in captions if item.strip()]
+    if not bodies:
+        return ""
+    if len(bodies) == 1:
+        return bodies[0]
+    return "\n\n".join(f"## 图 {index}\n\n{body}" for index, body in enumerate(bodies, start=1))
 
 
 @dataclass
@@ -63,8 +108,19 @@ def run_process(
     notes: list[str] = []
     parsed = _load_text(file_path, filename, raw_text, cfg, preview, vlm, notes)
     body = parsed.text.strip()
-    if cfg.imageIndex:
-        body = _append_image_captions(body, parsed.images, preview, vlm, notes, filename)
+    image_file = Path(filename or file_path or "").suffix.lower() in IMAGES
+    if cfg.imageIndex or (image_file and parsed.images):
+        body = _append_image_captions(
+            body,
+            parsed.images,
+            preview,
+            vlm,
+            notes,
+            filename,
+            cfg.imageIndexMode,
+        )
+    if image_file and not body:
+        notes.append("图片没有生成描述。请配置图片理解模型后重试。")
     if not body:
         notes.append("没有解析出文字。检查文件是否为空，或格式是否支持。")
         return ProcessResult(
@@ -183,7 +239,9 @@ def _load_text(
         for index, png in enumerate(pages, start=1):
             try:
                 markdown.append(
-                    chat_completion(model, auth, PDF_PROMPT, images=[png], max_tokens=2500, timeout=180).strip()
+                    chat_completion(
+                        model, auth, PDF_PROMPT, images=[png], max_tokens=2500, timeout=180, thinking=False
+                    ).strip()
                 )
             except Exception as exc:
                 notes.append(f"第 {index} 页增强解析失败：{exc}")
@@ -204,9 +262,10 @@ def _append_image_captions(
     vlm: tuple[AiModelRow, str] | None,
     notes: list[str],
     filename: str = "",
+    mode: str = "auto",
 ) -> str:
     if not images:
-        if filename.lower().endswith((".pdf", ".docx")):
+        if Path(filename).suffix.lower() in IMAGES | {".pdf", ".docx"}:
             notes.append("没有提取到可索引的图片。")
         return text
     if not vlm:
@@ -216,17 +275,27 @@ def _append_image_captions(
     batch = images[:2] if preview else images[:12]
     if preview and len(images) > 2:
         notes.append(f"预览只索引前 2 张图，共 {len(images)} 张。")
+    prompt = image_prompt_for(mode)
     captions: list[str] = []
     with call_scope(purpose="image_index"):
         for png in batch:
             try:
-                captions.append(chat_completion(model, auth, IMAGE_PROMPT, images=[png], max_tokens=400, timeout=120).strip())
+                captions.append(
+                    chat_completion(
+                        model,
+                        auth,
+                        prompt,
+                        images=[png],
+                        max_tokens=2500,
+                        timeout=180,
+                        thinking=False,
+                    ).strip()
+                )
             except Exception as exc:
                 notes.append(f"图片描述失败：{exc}")
-    captions = [item for item in captions if item]
-    if not captions:
+    block = join_image_markdown(captions)
+    if not block:
         return text
-    block = "## 文档图片\n\n" + "\n".join(f"- {item}" for item in captions)
     return f"{text}\n\n{block}" if text else block
 
 

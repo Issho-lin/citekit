@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, KeyboardEvent, cloneElement, isValidElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -16,6 +16,7 @@ import {
   Portal,
 } from "@chakra-ui/react";
 import { api, type AgentCitation, type AgentStep, type AgentStreamEvent } from "../api";
+import ReactMarkdown from "react-markdown";
 import { ProviderAvatar } from "../components/model/shared";
 import { IconChat, IconCheckSmall, IconChevronDown, IconLink, IconSend, IconSpark, IconStop } from "../components/icons";
 import { useStore } from "../mock/store";
@@ -85,6 +86,39 @@ function CiteChip({ cite }: { cite: AgentCitation }) {
   );
 }
 
+function answerMarkdown(text: string) {
+  return text.replace(/([：:。！？])\s+\*(?=\s|\*)/g, "$1\n\n*");
+}
+
+function citeMarkdown(node: ReactNode, byId: Map<number, AgentCitation>, keyPrefix = "c"): ReactNode {
+  if (node == null || typeof node === "boolean") return node;
+  if (typeof node === "number") return citeMarkdown(String(node), byId, keyPrefix);
+  if (Array.isArray(node)) {
+    return node.map((item, index) => citeMarkdown(item, byId, `${keyPrefix}-${index}`));
+  }
+  if (typeof node === "string") {
+    const parts = node.split(/(\[\d+\])/g);
+    if (parts.length === 1) return node;
+    return parts.map((part, index) => {
+      const match = part.match(/^\[(\d+)\]$/);
+      if (!match) {
+        return <Fragment key={`${keyPrefix}-${index}`}>{part}</Fragment>;
+      }
+      const cite = byId.get(Number(match[1]));
+      if (!cite) return <Fragment key={`${keyPrefix}-${index}`}>{part}</Fragment>;
+      return <CiteChip key={`${keyPrefix}-${index}`} cite={cite} />;
+    });
+  }
+  if (isValidElement<{ children?: ReactNode }>(node) && node.props.children != null) {
+    const tag = typeof node.type === "string" ? node.type : "";
+    if (tag === "code" || tag === "pre") return node;
+    return cloneElement(node, {
+      children: citeMarkdown(node.props.children, byId, keyPrefix),
+    });
+  }
+  return node;
+}
+
 function AnswerBody({
   text,
   citations,
@@ -95,23 +129,43 @@ function AnswerBody({
   streaming?: boolean;
 }) {
   const byId = new Map(citations.map((item) => [item.id, item]));
-  const parts = text.split(/(\[\d+\])/g);
   return (
     <div className={`chat-answer${streaming ? " is-streaming" : ""}`}>
-      {parts.map((part, index) => {
-        const match = part.match(/^\[(\d+)\]$/);
-        if (!match) {
-          return (
-            <span key={index} className="chat-answer-text">
-              {part}
-            </span>
-          );
-        }
-        const cite = byId.get(Number(match[1]));
-        if (!cite) return <span key={index}>{part}</span>;
-        return <CiteChip key={index} cite={cite} />;
-      })}
+      <div className="chat-answer-md">
+        <ReactMarkdown
+          components={{
+            p: ({ children }) => <p>{citeMarkdown(children, byId)}</p>,
+            li: ({ children }) => <li>{citeMarkdown(children, byId)}</li>,
+            h1: ({ children }) => <h1>{citeMarkdown(children, byId)}</h1>,
+            h2: ({ children }) => <h2>{citeMarkdown(children, byId)}</h2>,
+            h3: ({ children }) => <h3>{citeMarkdown(children, byId)}</h3>,
+            h4: ({ children }) => <h4>{citeMarkdown(children, byId)}</h4>,
+            strong: ({ children }) => <strong>{citeMarkdown(children, byId)}</strong>,
+            em: ({ children }) => <em>{citeMarkdown(children, byId)}</em>,
+            td: ({ children }) => <td>{citeMarkdown(children, byId)}</td>,
+            th: ({ children }) => <th>{citeMarkdown(children, byId)}</th>,
+          }}
+        >
+          {answerMarkdown(text)}
+        </ReactMarkdown>
+      </div>
       {streaming ? <span className="chat-caret" aria-hidden /> : null}
+    </div>
+  );
+}
+
+function ThinkingBody({ text }: { text: string }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [text]);
+  return (
+    <div ref={boxRef} className="chat-thinking-body">
+      <div className="chat-thinking-md">
+        <ReactMarkdown>{text}</ReactMarkdown>
+      </div>
     </div>
   );
 }
@@ -477,7 +531,7 @@ export function AgentPage() {
       if (event.type === "status") {
         draft.status = event.message;
       } else if (event.type === "thinking") {
-        draft.thinking = [draft.thinking, event.text].filter(Boolean).join("\n\n");
+        draft.thinking = `${draft.thinking || ""}${event.text}`;
       } else if (event.type === "tool_start") {
         draft.steps = [
           ...(draft.steps ?? []).filter((s) => s.id !== event.id),
@@ -679,7 +733,7 @@ export function AgentPage() {
                     {turn.thinking ? (
                       <details className="chat-thinking" open={Boolean(turn.streaming && !turn.content)}>
                         <summary>思考过程</summary>
-                        <pre>{turn.thinking}</pre>
+                        <ThinkingBody text={turn.thinking} />
                       </details>
                     ) : null}
 

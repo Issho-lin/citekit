@@ -19,7 +19,7 @@ from citekit_server.schemas import (
     SearchOut,
 )
 from citekit_server.tools.logic import format_hits, mcp_tool_list_item, search_tool
-from citekit_server.infra.upstream import chat_messages
+from citekit_server.infra.upstream import iter_chat_messages
 
 MAX_ROUNDS = 6
 MAX_HISTORY = 24
@@ -205,6 +205,67 @@ def _event(kind: str, **payload: Any) -> dict[str, Any]:
     return {"type": kind, **payload}
 
 
+def _iter_llm(
+    model: AiModelRow,
+    auth: str,
+    history: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None,
+    tool_choice: str | dict[str, Any] | None,
+    thinking: bool,
+) -> Iterator[dict[str, Any]]:
+    content = ""
+    reasoning = ""
+    calls: list[dict[str, Any]] = []
+    streamed = False
+    for event in iter_chat_messages(
+        model,
+        auth,
+        history,
+        tools=tools,
+        tool_choice=tool_choice,
+        max_tokens=1600,
+        timeout=90,
+        thinking=thinking,
+    ):
+        kind = event.get("type")
+        if kind == "token":
+            text = str(event.get("text") or "")
+            if not text:
+                continue
+            if not streamed:
+                yield _event("status", message="正在整理回答…")
+                streamed = True
+            content += text
+            yield _event("token", text=text)
+        elif kind == "thinking":
+            text = str(event.get("text") or "")
+            if text:
+                reasoning += text
+                yield _event("thinking", text=text)
+        elif kind == "message":
+            calls = list(event.get("tool_calls") or [])
+            if not content:
+                content = str(event.get("content") or "")
+            if not reasoning:
+                reasoning = str(event.get("reasoning") or "")
+    content, think = _split_thinking(content, reasoning)
+    if think and think not in reasoning:
+        yield _event("thinking", text=think)
+        reasoning = (reasoning + "\n" + think).strip()
+    if content and not streamed and not calls:
+        for piece in _chunk_text(content):
+            yield _event("token", text=piece)
+        streamed = True
+    yield _event(
+        "llm_done",
+        content=content.strip(),
+        thinking=reasoning.strip(),
+        tool_calls=calls,
+        streamed=streamed,
+    )
+
+
 def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]]:
     endpoint_ids = _resolve_endpoint_ids(body)
     endpoints = _load_endpoints(db, endpoint_ids)
@@ -241,50 +302,53 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
     try:
         for round_index in range(MAX_ROUNDS):
             has_hits = _has_retrieval_hits(steps)
-            # 已有命中后尽快收口，避免空转改写；最后一轮强制作答
-            force_answer = round_index >= MAX_ROUNDS - 1 or (has_hits and round_index >= 2)
+            force_answer = has_hits or round_index >= MAX_ROUNDS - 1
             yield _event("status", message="正在整理回答…" if force_answer else "正在选择工具…")
+            done = None
             with call_scope(purpose="agent", kb_id=kb_id):
-                reply = chat_messages(
+                for event in _iter_llm(
                     model,
                     auth,
                     history,
                     tools=None if force_answer else openai_tools,
                     tool_choice="none" if force_answer else "auto",
-                    max_tokens=1600,
-                    timeout=90,
-                    # 收口轮关闭 thinking，避免模型只吐推理不写正文
                     thinking=not force_answer,
-                )
-            calls = reply["tool_calls"] if not force_answer else []
-            content, think = _split_thinking(reply.get("content") or "", reply.get("reasoning") or "")
+                ):
+                    if event.get("type") == "llm_done":
+                        done = event
+                    else:
+                        yield event
+            content = str((done or {}).get("content") or "")
+            think = str((done or {}).get("thinking") or "")
+            calls = list((done or {}).get("tool_calls") or []) if not force_answer else []
+            streamed = bool((done or {}).get("streamed"))
             if think:
                 thinking_parts.append(think)
-                yield _event("thinking", text=think)
 
-            if not calls:
+            if force_answer or not calls:
                 answer = content.strip()
-                # 有检索命中但正文为空：再补一轮强制作答（常见于思考模型）
                 if not answer and _has_retrieval_hits(steps):
                     yield _event("status", message="正在根据检索结果整理回答…")
                     recover_history = [*history, {"role": "user", "content": RECOVER}]
                     with call_scope(purpose="agent", kb_id=kb_id):
-                        recover = chat_messages(
+                        recover = None
+                        for event in _iter_llm(
                             model,
                             auth,
                             recover_history,
                             tools=None,
-                            max_tokens=1600,
-                            timeout=90,
+                            tool_choice="none",
                             thinking=False,
-                        )
-                    answer, recover_think = _split_thinking(
-                        recover.get("content") or "", recover.get("reasoning") or ""
-                    )
-                    if recover_think:
-                        thinking_parts.append(recover_think)
-                        yield _event("thinking", text=recover_think)
-                    answer = answer.strip()
+                        ):
+                            if event.get("type") == "llm_done":
+                                recover = event
+                            else:
+                                yield event
+                    answer = str((recover or {}).get("content") or "").strip()
+                    extra_think = str((recover or {}).get("thinking") or "").strip()
+                    if extra_think:
+                        thinking_parts.append(extra_think)
+                    streamed = streamed or bool((recover or {}).get("streamed"))
                 if not answer:
                     if _has_retrieval_hits(steps):
                         answer = "检索已有命中，但模型未能整理成回答。请重试，或换一个文本理解模型。"
@@ -292,8 +356,9 @@ def iter_agent_events(db: Session, body: AgentChatIn) -> Iterator[dict[str, Any]
                         answer = "检索未找到足够相关的内容。请换一种问法，或检查所选 MCP / 工具范围。"
                     else:
                         answer = "模型没有给出回答。"
-                for piece in _chunk_text(answer):
-                    yield _event("token", text=piece)
+                    if not streamed:
+                        for piece in _chunk_text(answer):
+                            yield _event("token", text=piece)
                 yield _event(
                     "done",
                     answer=answer,

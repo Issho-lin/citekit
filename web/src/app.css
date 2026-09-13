@@ -4050,6 +4050,71 @@ body {
   word-break: break-word;
 }
 
+.chat-thinking-body {
+  max-height: 220px;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+.chat-thinking-md {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #4e5969;
+  word-break: break-word;
+}
+
+.chat-thinking-md > :first-child {
+  margin-top: 0;
+}
+
+.chat-thinking-md > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-thinking-md p,
+.chat-thinking-md ul,
+.chat-thinking-md ol,
+.chat-thinking-md pre,
+.chat-thinking-md blockquote {
+  margin: 0 0 8px;
+}
+
+.chat-thinking-md ul,
+.chat-thinking-md ol {
+  padding-left: 1.2em;
+}
+
+.chat-thinking-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: rgba(17, 24, 36, 0.06);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.chat-thinking-md pre {
+  max-height: none;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(17, 24, 36, 0.05);
+}
+
+.chat-thinking-md pre code {
+  background: none;
+  padding: 0;
+}
+
+.chat-thinking-md h1,
+.chat-thinking-md h2,
+.chat-thinking-md h3,
+.chat-thinking-md h4 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #344054;
+}
+
 .chat-trace {
   display: flex;
   flex-direction: column;
@@ -4166,7 +4231,6 @@ body {
   color: #111824;
   font-size: 14px;
   line-height: 1.7;
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
@@ -4179,8 +4243,64 @@ body {
   background: #f2f4f8;
 }
 
-.chat-answer-text {
-  white-space: pre-wrap;
+.chat-answer-md > :first-child {
+  margin-top: 0;
+}
+
+.chat-answer-md > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-answer-md p,
+.chat-answer-md ul,
+.chat-answer-md ol,
+.chat-answer-md pre,
+.chat-answer-md blockquote {
+  margin: 0 0 0.7em;
+}
+
+.chat-answer-md ul,
+.chat-answer-md ol {
+  padding-left: 1.3em;
+}
+
+.chat-answer-md p:last-child,
+.chat-answer-md ul:last-child,
+.chat-answer-md ol:last-child {
+  margin-bottom: 0;
+}
+
+.chat-answer-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  background: rgba(17, 24, 36, 0.06);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.chat-answer-md pre {
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(17, 24, 36, 0.05);
+}
+
+.chat-answer-md pre code {
+  background: none;
+  padding: 0;
+}
+
+.chat-answer-md h1,
+.chat-answer-md h2,
+.chat-answer-md h3,
+.chat-answer-md h4 {
+  margin: 0.8em 0 0.4em;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.chat-answer-md strong {
+  font-weight: 650;
 }
 
 .chat-cite-chip {

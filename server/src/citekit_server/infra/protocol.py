@@ -18,6 +18,8 @@ class ProviderProtocol:
     refuse_rerank_if_host: tuple[str, ...] = ()
     rerank_url_tip: str = ""
     embedding_url_tip: str = ""
+    # 主路径失败时再试另一套聊天接口（豆包：chat/completions ↔ responses）。
+    chat_fallback_path: str | None = None
 
 
 DEFAULT = ProviderProtocol()
@@ -36,10 +38,13 @@ HUNYUAN = ProviderProtocol(
     embedding_url_tip="混元多模态向量走 /embeddings/multimodal，普通索引模型走 /embeddings。填 TokenHub 的 /v1 即可。",
 )
 
+DOUBAO = ProviderProtocol(chat_fallback_path="responses")
+
 BY_ID: dict[str, ProviderProtocol] = {
     "Qwen": QWEN,
     "AliCloud": QWEN,
     "Hunyuan": HUNYUAN,
+    "Doubao": DOUBAO,
     "Siliconflow": DEFAULT,
     "BAAI": DEFAULT,
     "Jina": DEFAULT,

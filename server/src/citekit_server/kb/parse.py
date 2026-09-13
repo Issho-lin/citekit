@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 SUPPORTED = {".txt", ".md", ".markdown", ".html", ".htm", ".csv", ".pdf", ".docx"}
+IMAGES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
 @dataclass
@@ -28,8 +29,13 @@ def html_to_text(raw: str) -> str:
 def parse_file(path: str, name: str = "", *, render_pages: bool = False, collect_images: bool = False) -> ParseOut:
     suffix = Path(name or path).suffix.lower()
     file = Path(path)
+    if suffix in IMAGES:
+        blob = file.read_bytes()
+        if len(blob) < 32:
+            raise ValueError("图片文件过小或已损坏")
+        return ParseOut(text="", images=[blob])
     if suffix not in SUPPORTED:
-        raise ValueError(f"暂不支持 {suffix or '该格式'}，请上传 PDF、Markdown、纯文本、HTML、CSV 或 Word")
+        raise ValueError(f"暂不支持 {suffix or '该格式'}，请上传 PDF、Word、图片、Markdown、纯文本、HTML 或 CSV")
     if suffix == ".pdf":
         return _pdf(file, render_pages=render_pages, collect_images=collect_images)
     if suffix == ".docx":

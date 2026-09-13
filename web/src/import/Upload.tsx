@@ -65,7 +65,7 @@ export function UploadStep() {
           type,
           item.sourceName,
           item.link || item.dbFileId || `uploads/${item.sourceName}`,
-          process,
+          importSource === "imageDataset" ? { ...process, imageIndex: true } : process,
           parentId,
           { fileId: item.dbFileId, rawText: item.rawText },
         );

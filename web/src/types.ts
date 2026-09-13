@@ -39,6 +39,7 @@ export interface ProcessConfig {
   indexChunkTitle: boolean;
   autoIndexes: boolean;
   imageIndex: boolean;
+  imageIndexMode: "auto" | "transcribe" | "extract";
   chunkSettingMode: "auto" | "custom";
   chunkSplitMode: "paragraph" | "size" | "char";
   paragraphChunkAIMode: "auto" | "forbid" | "force";

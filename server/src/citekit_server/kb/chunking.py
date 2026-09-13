@@ -303,7 +303,13 @@ def describe_process(cfg: ProcessConfigIn | None = None) -> str:
             (data.indexPrefixTitle, "文档标题加入索引"),
             (data.indexChunkTitle, "块标题单独索引"),
             (data.autoIndexes, "补充索引"),
-            (data.imageIndex, "图片索引"),
+            (
+                data.imageIndex,
+                {
+                    "transcribe": "图片索引（转写文字）",
+                    "extract": "图片索引（提取数据）",
+                }.get(getattr(data, "imageIndexMode", "auto") or "auto", "图片索引（按图分流）"),
+            ),
         )
         if flag
     ]

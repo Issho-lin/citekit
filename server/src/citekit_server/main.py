@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import threading
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,7 @@ from citekit_server.config import settings
 from citekit_server.db import SessionLocal, UploadedFileRow, apply_migrations
 from citekit_server.eval.api import router as eval_router
 from citekit_server.kb.api import router as kb_router
+from citekit_server.kb.ingest import resume_interrupted_ingest
 from citekit_server.tools.mcp import router as mcp_router
 from citekit_server.tools.api import router as tools_router
 from citekit_server.catalog.seed import seed_if_empty
@@ -28,6 +30,7 @@ async def lifespan(_app: FastAPI):
             db.commit()
     finally:
         db.close()
+    threading.Thread(target=resume_interrupted_ingest, daemon=True).start()
     yield
 
 

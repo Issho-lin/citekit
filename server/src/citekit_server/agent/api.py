@@ -29,6 +29,7 @@ def agent_chat(body: AgentChatIn, db: Session = Depends(get_db)) -> AgentChatOut
 @router.post("/agent/chat/stream")
 def agent_chat_stream(body: AgentChatIn, db: Session = Depends(get_db)) -> StreamingResponse:
     def generate() -> Iterator[str]:
+        yield ": stream-open\n\n"
         try:
             for event in iter_agent_events(db, body):
                 yield _sse(event)

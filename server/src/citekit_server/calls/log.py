@@ -25,11 +25,12 @@ MAX_ROWS = 2000
 @contextmanager
 def call_scope(**kwargs: Any) -> Iterator[None]:
     prev = _ctx.get()
-    token = _ctx.set({**(prev or {}), **{k: v for k, v in kwargs.items() if v is not None}})
+    _ctx.set({**(prev or {}), **{k: v for k, v in kwargs.items() if v is not None}})
     try:
         yield
     finally:
-        _ctx.reset(token)
+        # reset(token) 会在生成器 yield 给 ASGI 后再进入时跨 Context 崩溃
+        _ctx.set(prev)
 
 
 def record_http_call(

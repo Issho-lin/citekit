@@ -29,6 +29,7 @@ export const DEFAULT_PROCESS: ProcessConfig = {
   indexChunkTitle: true,
   autoIndexes: false,
   imageIndex: false,
+  imageIndexMode: "auto",
   chunkSettingMode: "auto",
   chunkSplitMode: "paragraph",
   paragraphChunkAIMode: "auto",

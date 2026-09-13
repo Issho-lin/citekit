@@ -42,7 +42,12 @@ const STEP_MAP: Record<ImportSourceKind, { title: string }[]> = {
     { title: "数据预览" },
     { title: "确认上传" },
   ],
-  imageDataset: [{ title: "选择文件" }],
+  imageDataset: [
+    { title: "选择文件" },
+    { title: "参数设置" },
+    { title: "数据预览" },
+    { title: "确认上传" },
+  ],
 };
 
 export function DatasetImportContextProvider({
@@ -60,7 +65,9 @@ export function DatasetImportContextProvider({
 }) {
   const steps = STEP_MAP[importSource];
   const { activeStep, goToNext, goToPrevious, MyStep } = useMyStep({ defaultStep: 0, steps });
-  const [process, setProcess] = useState<ProcessConfig>(fillProcess());
+  const [process, setProcess] = useState<ProcessConfig>(() =>
+    fillProcess(importSource === "imageDataset" ? { imageIndex: true } : {}),
+  );
   const [sources, setSources] = useState<ImportSourceItemType[]>([]);
 
   const value = useMemo(
@@ -102,22 +109,20 @@ export function DatasetImportContextProvider({
         )}
         <Box flex={1} />
       </Flex>
-      {importSource !== "imageDataset" && (
-        <Box
-          mt={4}
-          mb={5}
-          px={3}
-          py={[2, 4]}
-          bg="myGray.50"
-          borderWidth="1px"
-          borderColor="myGray.200"
-          borderRadius="md"
-        >
-          <Box maxW={["100%", "900px"]} mx="auto">
-            <MyStep />
-          </Box>
+      <Box
+        mt={4}
+        mb={5}
+        px={3}
+        py={[2, 4]}
+        bg="myGray.50"
+        borderWidth="1px"
+        borderColor="myGray.200"
+        borderRadius="md"
+      >
+        <Box maxW={["100%", "900px"]} mx="auto">
+          <MyStep />
         </Box>
-      )}
+      </Box>
       {children}
     </DatasetImportContext.Provider>
   );

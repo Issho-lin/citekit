@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import time
 
 from qdrant_client.http.models import PointStruct
 from sqlalchemy.orm import Session
@@ -195,7 +196,7 @@ def _preview_out(result: ProcessResult, cfg: ProcessConfigIn, title: str) -> Pre
     )
 
 
-def ingest_source(source_id: str) -> None:
+def ingest_source(source_id: str, attempt: int = 0) -> None:
     db = SessionLocal()
     try:
         source = db.get(SourceRow, source_id)
@@ -299,6 +300,11 @@ def ingest_source(source_id: str) -> None:
         db.commit()
     except Exception as exc:
         db.rollback()
+        if attempt < 2 and _is_deadlock(exc):
+            db.close()
+            time.sleep(0.5 * (attempt + 1))
+            ingest_source(source_id, attempt + 1)
+            return
         source = db.get(SourceRow, source_id)
         if source:
             source.status = "error"
@@ -307,6 +313,21 @@ def ingest_source(source_id: str) -> None:
             db.commit()
     finally:
         db.close()
+
+
+def _is_deadlock(exc: BaseException) -> bool:
+    text = str(exc)
+    return "Deadlock" in text or "1213" in text
+
+
+def resume_interrupted_ingest() -> None:
+    db = SessionLocal()
+    try:
+        ids = [row.id for row in db.query(SourceRow).filter(SourceRow.status == "syncing").all()]
+    finally:
+        db.close()
+    for source_id in ids:
+        ingest_source(source_id)
 
 
 def reindex_chunk(db: Session, row: ChunkRow) -> None:

@@ -10,11 +10,11 @@ import { RenderUploadFiles } from "./RenderUploadFiles";
 import type { ImportSourceItemType } from "./types";
 import { UploadStep } from "./Upload";
 
-export function FileLocal() {
+export function FileLocal({ fileType }: { fileType?: string }) {
   const { activeStep } = useDatasetImport();
   return (
     <>
-      {activeStep === 0 && <SelectFile />}
+      {activeStep === 0 && <SelectFile fileType={fileType} />}
       {activeStep === 1 && <DataProcess />}
       {activeStep === 2 && <PreviewData />}
       {activeStep === 3 && <UploadStep />}
@@ -22,7 +22,7 @@ export function FileLocal() {
   );
 }
 
-function SelectFile() {
+function SelectFile({ fileType }: { fileType?: string }) {
   const { goToNext, sources, setSources, kbId } = useDatasetImport();
   const [selectFiles, setSelectFiles] = useState<ImportSourceItemType[]>(
     sources.map((source) => ({ isUploading: false, ...source })),
@@ -110,7 +110,7 @@ function SelectFile() {
 
   return (
     <Box>
-      <FileSelector selectFiles={selectFiles} onSelectFiles={onSelectFiles} />
+      <FileSelector fileType={fileType} selectFiles={selectFiles} onSelectFiles={onSelectFiles} />
       <RenderUploadFiles files={selectFiles} setFiles={setSelectFiles} onCancelUpload={cancelUpload} />
       <Box textAlign="right" mt={5}>
         <Button isDisabled={successFiles.length === 0 || uploading} onClick={onclickNext}>

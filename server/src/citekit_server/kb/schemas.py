@@ -11,6 +11,7 @@ class ProcessConfigIn(BaseModel):
     indexChunkTitle: bool = True
     autoIndexes: bool = False
     imageIndex: bool = False
+    imageIndexMode: Literal["auto", "transcribe", "extract"] = "auto"
     chunkSettingMode: Literal["auto", "custom"] = "auto"
     chunkSplitMode: Literal["paragraph", "size", "char"] = "paragraph"
     paragraphChunkAIMode: Literal["auto", "forbid", "force"] = "auto"

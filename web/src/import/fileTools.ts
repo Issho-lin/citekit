@@ -2,6 +2,8 @@
 export const documentFileType =
   ".txt, .docx, .csv, .xlsx, .pdf, .md, .html, .pptx";
 
+export const imageFileType = ".jpg, .jpeg, .png, .webp, .gif";
+
 /** FastGPT `packages/global/common/file/tools.ts` */
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return "0 B";
