@@ -1,6 +1,7 @@
 import { Box, Button, Flex, HStack } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { indexText } from "../indexText";
 import type { ProcessConfig } from "../types";
 import { useDatasetImport } from "./Context";
 import type { ImportSourceItemType } from "./types";
@@ -260,19 +261,32 @@ export function PreviewData() {
                         ) : null}
                         {(item.indexes || []).length > 0 ? (
                           <Box mt={2} fontSize="xs" color="myGray.400" lineHeight={1.7}>
-                            {(item.indexes || []).map((idx, i) => (
-                              <Box key={i}>
-                                {(idx.type === "child"
+                            {(item.indexes || []).map((idx, i) => {
+                              const preview = indexText(idx.text);
+                              const kind =
+                                idx.type === "child"
                                   ? "子块"
                                   : idx.type === "auto"
                                     ? "补充"
                                     : idx.type === "image"
                                       ? "图片"
-                                      : "索引") + ` · ${idx.text.slice(0, 80)}${idx.text.length > 80 ? "…" : ""}`}
-                              </Box>
-                            ))}
+                                      : "索引";
+                              return (
+                                <Box key={i}>
+                                  {kind} · {preview.slice(0, 80)}
+                                  {preview.length > 80 ? "…" : ""}
+                                </Box>
+                              );
+                            })}
                           </Box>
-                        ) : null}
+                        ) : (
+                          <Box mt={2} fontSize="xs" color="myGray.400" lineHeight={1.7}>
+                            {(() => {
+                              const preview = indexText(item.text);
+                              return `向量索引 · ${preview.slice(0, 80)}${preview.length > 80 ? "…" : ""}`;
+                            })()}
+                          </Box>
+                        )}
                       </Box>
                     ))}
                   </>

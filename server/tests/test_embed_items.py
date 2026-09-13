@@ -59,3 +59,11 @@ class EmbedItemsTest(unittest.TestCase):
         self.assertIn("表", body)
         self.assertNotIn("http", body)
         self.assertEqual(unit.text, raw)
+
+    def test_vector_drops_url_shaped_labels(self):
+        raw = "见[https://docs.example.com/a](https://docs.example.com/a) 与 https://docs.example.com/b。"
+        unit = Unit(title="", text=raw)
+        body = next(text for kind, text in embed_items(unit, "", False) if kind == "default")
+        self.assertNotIn("http", body)
+        self.assertNotIn("example.com", body)
+        self.assertEqual(unit.text, raw)

@@ -170,6 +170,13 @@ class IndexTextTest(unittest.TestCase):
         )
         self.assertNotIn("http", out)
 
+    def test_drops_url_labels_and_bare_urls(self):
+        raw = "见[https://example.com/a](https://example.com/a)与 https://example.com/b 和 <https://example.com/c>。"
+        out = index_text(raw)
+        self.assertNotIn("http", out)
+        self.assertNotIn("example.com", out)
+        self.assertIn("见", out)
+
 
 if __name__ == "__main__":
     unittest.main()

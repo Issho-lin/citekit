@@ -182,7 +182,7 @@ def embed_items(
     children = [item["text"] for item in unit.indexes if item.get("type") == "child"]
     extras = [item for item in unit.indexes if item.get("type") != "child"]
     items: list[tuple[str, str]] = []
-    heading = index_label(unit.title or "") or (unit.title or "").strip()
+    heading = index_label(unit.title or "")
     body = (unit.text or "").strip()
     first = next((line.strip() for line in body.splitlines() if line.strip()), "")
     # Optional extra vector for a real heading line, not a paragraph lead sentence.

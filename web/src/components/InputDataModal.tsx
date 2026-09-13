@@ -12,9 +12,10 @@ import {
   ModalOverlay,
   Textarea,
 } from "@chakra-ui/react";
-import { IconPlus, IconTrash } from "./icons";
+import { IconPlus, IconRightArrow, IconTrash } from "./icons";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { useToast } from "./Toast";
+import { indexText } from "../indexText";
 import type { Chunk, ChunkIndex } from "../types";
 
 type Tab = "chunk" | "qa";
@@ -109,15 +110,15 @@ export function InputDataModal({
   const [q, setQ] = useState(chunk?.text ?? "");
   const [a, setA] = useState(chunk?.a ?? "");
   const [indexes, setIndexes] = useState<ChunkIndex[]>(() => {
-    if (!chunk) return [];
+    if (!chunk) return [{ id: nid(), type: "default", text: "" }];
     if (chunk.indexes?.length) {
       return chunk.indexes.map((item, i) => ({
         id: item.id || nid(),
         type: item.type || (i === 0 ? "default" : "custom"),
-        text: item.text || "",
+        text: indexText(item.text || ""),
       }));
     }
-    return [{ id: nid(), type: "default", text: chunk.text }];
+    return [{ id: nid(), type: "default", text: indexText(chunk.text) }];
   });
   const [saving, setSaving] = useState(false);
   const [focusId, setFocusId] = useState<string>();
@@ -130,6 +131,23 @@ export function InputDataModal({
     el?.focus();
   }, [focusId]);
 
+  function derivedIndex() {
+    return indexText(tab === "qa" ? `${q}\n${a}` : q).trim();
+  }
+
+  function refreshIndex() {
+    const derived = derivedIndex();
+    if (!derived) {
+      toast("请先填写内容");
+      return;
+    }
+    setIndexes((prev) => {
+      const extras = prev.filter((item) => item.type !== "default" && item.type !== "child");
+      const current = prev.find((item) => item.type === "default");
+      return [{ id: current?.id || nid(), type: "default", text: derived }, ...extras];
+    });
+  }
+
   async function submit() {
     if (!q.trim() || (tab === "qa" && !a.trim())) {
       toast("请填写必填内容");
@@ -140,8 +158,12 @@ export function InputDataModal({
       .filter((item) => item.text);
     const hasSearchIndex = nextIndexes.some((item) => item.type === "default" || item.type === "child");
     if (!hasSearchIndex) {
-      const fallback = tab === "qa" ? `${q.trim()}\n${a.trim()}` : q.trim();
-      nextIndexes.push({ id: nid(), type: "default", text: fallback });
+      const derived = derivedIndex();
+      if (!derived) {
+        toast("请先填写内容");
+        return;
+      }
+      nextIndexes.push({ id: nid(), type: "default", text: derived });
     }
     setIndexes(nextIndexes);
     setSaving(true);
@@ -255,6 +277,23 @@ export function InputDataModal({
                     )}
                   </Flex>
                 )}
+                <Button
+                  h="32px"
+                  minH="32px"
+                  w="100%"
+                  bg="myGray.150"
+                  color="primary.700"
+                  borderRadius="6px"
+                  fontSize="12px"
+                  lineHeight="16px"
+                  fontWeight={500}
+                  letterSpacing="0.5px"
+                  _hover={{ bg: "myGray.200" }}
+                  rightIcon={<IconRightArrow />}
+                  onClick={refreshIndex}
+                >
+                  更新索引
+                </Button>
               </Flex>
 
               <Flex flexDir="column" flex="1 0 0" w={["100%", 0]} minH={0}>
@@ -314,7 +353,7 @@ export function InputDataModal({
                         </Flex>
                         <Textarea
                           data-index-id={item.id}
-                          maxLength={2000}
+                          maxLength={item.type === "default" ? undefined : 2000}
                           borderColor="transparent"
                           minH="40px"
                           px={0}
@@ -347,7 +386,7 @@ export function InputDataModal({
         </ModalBody>
         <ModalFooter px={6} pt={0} pb={5} gap={3}>
           <Box flex="1" fontSize="xs" color="myGray.400" textAlign="left">
-            保存会写入正文，并按右侧索引重新向量化
+            改完原文后点「更新索引」刷新右侧默认索引；保存才会写入并重新向量化。
           </Box>
           <Button variant="whiteBase" onClick={onClose} isDisabled={saving}>
             取消

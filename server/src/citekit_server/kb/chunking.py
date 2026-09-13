@@ -17,13 +17,26 @@ _CN_ITEM = re.compile(rf"^{_CN_NUM}、\S")
 _CN_PAREN = re.compile(rf"^[（(]{_CN_NUM}[）)]")
 _MD_IMAGE = re.compile(r"!\[([^\]]*?)\]\([^)]*\)")
 _MD_LINK = re.compile(r"\[([^\]]*?)\]\([^)]*\)")
+_HTML_A = re.compile(r"(?is)<a\b[^>]*>(.*?)</a>")
+_AUTO_LINK = re.compile(r"<https?://[^>\s]+>", re.I)
+_BARE_URL = re.compile(r"(?:https?://|www\.)[^\s\]<>）】\"']+", re.I)
 _ZW = re.compile(r"[\u200b\u200c\u200d\ufeff]")
+
+
+def _visible_label(text: str) -> str:
+    label = (text or "").strip()
+    if not label or _BARE_URL.fullmatch(label):
+        return ""
+    return label
 
 
 def index_text(text: str) -> str:
     """Text used for embedding and BM25: unwrap links/images, keep other markdown."""
-    out = _MD_IMAGE.sub(lambda match: match.group(1).strip(), text or "")
-    return _MD_LINK.sub(lambda match: match.group(1).strip(), out)
+    out = _HTML_A.sub(lambda match: _visible_label(re.sub(r"(?s)<[^>]+>", "", match.group(1) or "")), text or "")
+    out = _MD_IMAGE.sub(lambda match: _visible_label(match.group(1)), out)
+    out = _MD_LINK.sub(lambda match: _visible_label(match.group(1)), out)
+    out = _AUTO_LINK.sub("", out)
+    return _BARE_URL.sub("", out)
 
 
 def index_label(line: str) -> str:
