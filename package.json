@@ -8,10 +8,17 @@
     "dev:web": "pnpm --dir web dev",
     "dev:server": "uv --directory server run citekit-server",
     "dev:db": "docker compose up -d mysql qdrant minio",
-    "start": "pnpm dev"
+    "start": "pnpm dev",
+    "check:web": "pnpm --dir web exec tsc --noEmit",
+    "check:server": "uv --directory server run python -m unittest discover tests",
+    "check": "pnpm check:web && pnpm check:server"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "simple-git-hooks": "^2.13.0"
   },
-  "packageManager": "pnpm@10.31.0"
+  "packageManager": "pnpm@10.31.0",
+  "simple-git-hooks": {
+    "pre-commit": "pnpm exec node scripts/check-staged.mjs"
+  }
 }
