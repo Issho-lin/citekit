@@ -98,7 +98,6 @@ class WorkspaceOut(BaseModel):
     vectorModel: str
     vlmModel: str
     rerankModel: str
-    rewriteFallback: bool
 
 
 class WorkspacePatch(BaseModel):
@@ -106,7 +105,6 @@ class WorkspacePatch(BaseModel):
     vectorModel: str | None = None
     vlmModel: str | None = None
     rerankModel: str | None = None
-    rewriteFallback: bool | None = None
 
 
 class ProviderOut(BaseModel):

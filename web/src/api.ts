@@ -35,7 +35,6 @@ export interface WorkspaceSettings {
   vectorModel: string;
   vlmModel: string;
   rerankModel: string;
-  rewriteFallback: boolean;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -74,13 +73,13 @@ export const api = {
   createModel: async (model: AiModel) => {
     const { requestAuth, ...rest } = model;
     const payload: Record<string, unknown> = { ...rest };
-    if (isPlainSecret(requestAuth)) payload.requestAuthEnc = await encryptSecret(requestAuth.trim());
+    if (isPlainSecret(requestAuth)) payload.requestAuthEnc = await encryptSecret(requestAuth!.trim());
     return request<AiModel>("/api/models", { method: "POST", body: JSON.stringify(payload) });
   },
   patchModel: async (id: string, patch: Partial<AiModel>) => {
     const { requestAuth, ...rest } = patch;
     const payload: Record<string, unknown> = { ...rest };
-    if (isPlainSecret(requestAuth)) payload.requestAuthEnc = await encryptSecret(requestAuth.trim());
+    if (isPlainSecret(requestAuth)) payload.requestAuthEnc = await encryptSecret(requestAuth!.trim());
     return request<AiModel>(`/api/models/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),

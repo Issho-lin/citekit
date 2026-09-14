@@ -220,7 +220,6 @@ def patch_workspace(body: WorkspacePatch, db: Session = Depends(get_db)) -> Work
         "vectorModel": "vector_model",
         "vlmModel": "vlm_model",
         "rerankModel": "rerank_model",
-        "rewriteFallback": "rewrite_fallback",
     }
     for key, column in mapping.items():
         if key in data:

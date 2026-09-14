@@ -188,7 +188,6 @@ def seed_if_empty(db: Session) -> None:
                 vector_model="bge-m3",
                 vlm_model="gpt-4o-mini",
                 rerank_model="",
-                rewrite_fallback=False,
             )
         )
     db.commit()

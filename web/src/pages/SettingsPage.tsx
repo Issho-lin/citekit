@@ -1,27 +1,23 @@
 import { useState } from "react";
-import { Box, Button, Flex, Input, Switch, Text } from "@chakra-ui/react";
+import { Box, Button, Flex, Text } from "@chakra-ui/react";
 import { PageHero, Panel } from "../components/chrome";
 import { ModelConfigTab } from "../components/model/ModelConfigTab";
 import { ProviderConfigTab } from "../components/model/ProviderConfigTab";
 import { DefaultModelsModal } from "../components/model/DefaultModelsModal";
 import { ModelLineIcon } from "../components/model/shared";
 import { useStore } from "../mock/store";
+import { useToast } from "../components/Toast";
 
 type Tab = "models" | "providers" | "workspace";
 
 export function SettingsPage() {
   const [tab, setTab] = useState<Tab>("models");
-  const {
-    vectorModel,
-    llmModel,
-    vlmModel,
-    rerankModel,
-    rewriteFallback,
-    setRewriteFallback,
-  } = useStore();
+  const { vectorModel, llmModel, vlmModel, rerankModel } = useStore();
   const [defaultOpen, setDefaultOpen] = useState(false);
+  const toast = useToast();
 
   const nameOf = (id: string) => id || "未设置";
+  const mcpBase = `${window.location.origin}/mcp`;
 
   return (
     <div className="page">
@@ -76,17 +72,33 @@ export function SettingsPage() {
                 ))}
               </Flex>
             </Panel>
-            <Panel title="查询策略">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Text fontSize="14px">多轮改写兜底</Text>
-                <Switch isChecked={rewriteFallback} onChange={(e) => setRewriteFallback(e.target.checked)} />
-              </div>
-              <Text fontSize="12px" color="myGray.500" mt={2}>
-                默认关闭。指代消解由 Agent 完成。
-              </Text>
-            </Panel>
-            <Panel title="MCP 传输">
-              <Input defaultValue="Streamable HTTP" isDisabled />
+            <Panel title="MCP 接入">
+              <Flex direction="column" gap={2}>
+                <Text fontSize="12px" color="myGray.500">
+                  远程端点走 Streamable HTTP（MCP 2025-03-26，兼容 2024-11-05 / 2025-06-18），单一 POST 端点收发
+                  JSON-RPC，鉴权用 Bearer 密钥。
+                </Text>
+                <Flex align="center" gap={2}>
+                  <Box flex={1} className="mono" fontSize="13px" color="#1f2329">
+                    {mcpBase}
+                  </Box>
+                  <Button
+                    size="sm"
+                    variant="whiteBase"
+                    h="28px"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(mcpBase);
+                      toast("已复制地址");
+                    }}
+                  >
+                    复制
+                  </Button>
+                </Flex>
+                <Text fontSize="12px" color="myGray.500">
+                  完整地址为 <span className="mono">/mcp/&#123;端点 ID&#125;</span>，请求头带{" "}
+                  <span className="mono">Authorization: Bearer &#123;端点密钥&#125;</span>。端点密钥在「MCP 端点」页管理。
+                </Text>
+              </Flex>
             </Panel>
           </div>
         ) : null}

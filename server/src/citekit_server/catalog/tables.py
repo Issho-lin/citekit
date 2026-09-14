@@ -47,4 +47,3 @@ class WorkspaceRow(Base):
     vector_model: Mapped[str] = mapped_column(String(200), default="")
     vlm_model: Mapped[str] = mapped_column(String(200), default="")
     rerank_model: Mapped[str] = mapped_column(String(200), default="")
-    rewrite_fallback: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -84,7 +84,6 @@ def workspace_to_out(row: WorkspaceRow) -> WorkspaceOut:
         vectorModel=row.vector_model,
         vlmModel=row.vlm_model,
         rerankModel=row.rerank_model,
-        rewriteFallback=row.rewrite_fallback,
     )
 
 

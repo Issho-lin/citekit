@@ -992,6 +992,12 @@ body {
   gap: 14px;
 }
 
+/* 网格内的间距由 gap 控制，中和 .panel + .panel 的兄弟 margin，
+   否则第二列面板会被顶下去 14px 且高度缩短。 */
+.panel-grid .panel + .panel {
+  margin-top: 0;
+}
+
 .eval-toolbar {
   display: flex;
   align-items: center;

@@ -43,14 +43,12 @@ interface Store {
   llmModel: string;
   vlmModel: string;
   rerankModel: string;
-  rewriteFallback: boolean;
   aiModels: AiModel[];
   providers: ModelProvider[];
   setVectorModel: (v: string) => void;
   setLlmModel: (v: string) => void;
   setVlmModel: (v: string) => void;
   setRerankModel: (v: string) => void;
-  setRewriteFallback: (v: boolean) => void;
   addAiModel: (model: AiModel) => Promise<string | undefined>;
   updateAiModel: (model: string, patch: Partial<AiModel>) => Promise<void>;
   removeAiModel: (model: string) => Promise<void>;
@@ -133,7 +131,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [llmModel, setLlmModelState] = useState("");
   const [vlmModel, setVlmModelState] = useState("");
   const [rerankModel, setRerankModelState] = useState("");
-  const [rewriteFallback, setRewriteFallbackState] = useState(false);
   const [aiModels, setAiModels] = useState<AiModel[]>([]);
   const [providers, setProviders] = useState<ModelProvider[]>([]);
 
@@ -142,13 +139,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     vectorModel: string;
     vlmModel: string;
     rerankModel: string;
-    rewriteFallback: boolean;
   }) => {
     setLlmModelState(ws.llmModel);
     setVectorModelState(ws.vectorModel);
     setVlmModelState(ws.vlmModel);
     setRerankModelState(ws.rerankModel);
-    setRewriteFallbackState(ws.rewriteFallback);
   }, []);
 
   const reloadKbs = useCallback(async () => {
@@ -202,7 +197,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       vectorModel?: string;
       vlmModel?: string;
       rerankModel?: string;
-      rewriteFallback?: boolean;
     }) => {
       applyWorkspace(await api.patchWorkspace(patch));
     },
@@ -224,10 +218,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setRerankModel = useCallback((v: string) => {
     setRerankModelState(v);
     void persistWorkspace({ rerankModel: v });
-  }, [persistWorkspace]);
-  const setRewriteFallback = useCallback((v: boolean) => {
-    setRewriteFallbackState(v);
-    void persistWorkspace({ rewriteFallback: v });
   }, [persistWorkspace]);
 
   const addAiModel = useCallback(async (model: AiModel) => {
@@ -610,14 +600,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       llmModel,
       vlmModel,
       rerankModel,
-      rewriteFallback,
       aiModels,
       providers,
       setVectorModel,
       setLlmModel,
       setVlmModel,
       setRerankModel,
-      setRewriteFallback,
       addAiModel,
       updateAiModel,
       removeAiModel,
@@ -664,14 +652,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       llmModel,
       vlmModel,
       rerankModel,
-      rewriteFallback,
       aiModels,
       providers,
       setVectorModel,
       setLlmModel,
       setVlmModel,
       setRerankModel,
-      setRewriteFallback,
       addAiModel,
       updateAiModel,
       removeAiModel,
