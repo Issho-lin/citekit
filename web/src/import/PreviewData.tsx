@@ -1,5 +1,5 @@
 import { Box, Button, Flex, HStack } from "@chakra-ui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { indexText } from "../indexText";
 import type { ProcessConfig } from "../types";
@@ -330,7 +330,7 @@ function PreviewBusy({ usingModel }: { usingModel: boolean }) {
   );
 }
 
-function StatChip({ children, warn }: { children: string; warn?: boolean }) {
+function StatChip({ children, warn }: { children: ReactNode; warn?: boolean }) {
   return (
     <Box
       px={2}

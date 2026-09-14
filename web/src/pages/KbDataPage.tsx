@@ -119,6 +119,7 @@ export function KbDataPage() {
       </div>
     );
   }
+  const activeSource = source;
 
   function openEditor(chunk?: Chunk) {
     setEditingId(chunk?.id ?? "new");
@@ -132,7 +133,7 @@ export function KbDataPage() {
       return;
     }
     try {
-      await updateSource(source.id, { title: name });
+      await updateSource(activeSource.id, { title: name });
       toast("已修改");
       setRenameOpen(false);
     } catch (err) {

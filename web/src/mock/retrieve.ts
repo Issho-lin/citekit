@@ -33,7 +33,7 @@ function scoreText(query: string, text: string): number {
 export function retrieve(
   input: RetrieveInput,
   allChunks: Chunk[],
-): { hits: Hit[]; message?: string } {
+): { hits: Hit[]; message?: string; debug?: SearchDebug | null } {
   if (input.sourceIds && input.sourceIds.length === 0) {
     return { hits: [], message: "请至少勾选一个数据集。" };
   }

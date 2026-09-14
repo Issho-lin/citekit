@@ -67,7 +67,7 @@ export function modelSelectList(
     description: m.provider,
   }));
   if (noneLabel != null) {
-    return [{ label: noneLabel, value: "" }, ...options];
+    return [{ label: noneLabel, value: "", description: "" }, ...options];
   }
   return options;
 }

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { useMemo, useRef, useState, type MouseEvent, type ReactNode, type UIEvent } from "react";
 import {
   Box,
   Button,
@@ -310,7 +310,6 @@ function SearchableSelect({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            portalled={false}
             minW={minW}
             w={hasDesc ? "max-content" : minW}
             maxW="90vw"
@@ -352,7 +351,7 @@ function SearchableSelect({
                   px={3}
                   fontSize="sm"
                   _hover={{ bg: "myGray.100" }}
-                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseDown={(e: MouseEvent) => e.preventDefault()}
                   onClick={() => pick(query.trim(), onClose)}
                 >
                   使用「{query.trim()}」
@@ -384,7 +383,7 @@ function SearchableSelect({
                       color={active ? "primary.700" : "myGray.900"}
                       bg={active ? "myGray.100" : "transparent"}
                       _hover={{ bg: "myGray.100" }}
-                      onMouseDown={(e) => e.preventDefault()}
+                      onMouseDown={(e: MouseEvent) => e.preventDefault()}
                       onClick={() => pick(item.value, onClose)}
                     >
                       <OptionRow item={item} />
@@ -462,7 +461,7 @@ function VirtualOptionList({
               color={active ? "primary.700" : "myGray.900"}
               bg={active ? "myGray.100" : "transparent"}
               _hover={{ bg: "myGray.100" }}
-              onMouseDown={(e) => e.preventDefault()}
+              onMouseDown={(e: MouseEvent) => e.preventDefault()}
               onClick={() => onPick(item.value)}
             >
               <Box overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap" w="100%">

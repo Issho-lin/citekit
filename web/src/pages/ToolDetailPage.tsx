@@ -28,7 +28,7 @@ export function ToolDetailPage() {
   const toast = useToast();
   const del = useDisclosure();
   const rename = useDisclosure();
-  const { tools, knowledgeBases, sources, endpoints, evalCases, kbsReady, updateTool, updateKnowledgeBase, addToolToEndpoint, removeTool, addEvalCase } =
+  const { tools, knowledgeBases, endpoints, evalCases, kbsReady, updateTool, updateKnowledgeBase, addToolToEndpoint, removeTool, addEvalCase } =
     useStore();
   const tool = tools.find((t) => t.id === toolId);
   const kb = knowledgeBases.find((k) => k.id === tool?.kbId);
@@ -48,6 +48,7 @@ export function ToolDetailPage() {
       </div>
     );
   }
+  const activeTool = tool;
 
   const search = searchFromKb(kb);
   const next = toolNext(tool, endpoints);
@@ -69,7 +70,7 @@ export function ToolDetailPage() {
   async function commit(draft: ToolDraft) {
     setSaving(true);
     try {
-      await updateTool(tool.id, {
+      await updateTool(activeTool.id, {
         name: draft.name,
         title: draft.title,
         description: draft.description,
@@ -89,7 +90,7 @@ export function ToolDetailPage() {
   }
 
   async function onSave(draft: ToolDraft) {
-    if (published.length > 0 && draft.name !== tool.name) {
+    if (published.length > 0 && draft.name !== activeTool.name) {
       setPending(draft);
       rename.onOpen();
       return;

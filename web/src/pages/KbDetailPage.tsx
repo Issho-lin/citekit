@@ -226,6 +226,7 @@ export function KbDetailPage() {
                 ) : (
                   <Menu placement="bottom-end" offset={[0, 5]} autoSelect={false}>
                     <MenuButton
+                      as={Button}
                       variant="unstyled"
                       display="block"
                       h="auto"
