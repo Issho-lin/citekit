@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Input,
@@ -23,6 +23,8 @@ import {
   IconDash,
   IconGear,
   IconLink,
+  IconMoon,
+  IconSun,
   IconTrace,
 } from "../components/icons";
 
@@ -43,7 +45,62 @@ export function AppShell() {
   const { knowledgeBases, kbsReady, tools, endpoints } = useStore();
   const [q, setQ] = useState("");
   const [jumpOpen, setJumpOpen] = useState(false);
+  const [isDark, setIsDark] = useState(() => localStorage.getItem("citekit-theme") === "dark");
+  const themePointer = useRef<{ x: number; y: number } | null>(null);
+  const themeTransitioning = useRef(false);
   usePageProgress(!kbsReady);
+
+  useEffect(() => {
+    // Covers the initial render and non-animated state changes. Animated changes
+    // write this synchronously inside the View Transition callback below.
+    document.documentElement.dataset.theme = isDark ? "dark" : "light";
+    localStorage.setItem("citekit-theme", isDark ? "dark" : "light");
+  }, [isDark]);
+
+  function rememberThemePointer(event: PointerEvent<HTMLButtonElement>) {
+    themePointer.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function toggleTheme(event: MouseEvent<HTMLButtonElement>) {
+    const nextDark = !isDark;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const { x, y } = themePointer.current ?? {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+    themePointer.current = null;
+
+    const root = document.documentElement;
+    const applyTheme = () => {
+      root.dataset.theme = nextDark ? "dark" : "light";
+      setIsDark(nextDark);
+    };
+
+    if (
+      themeTransitioning.current ||
+      !document.startViewTransition ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      applyTheme();
+      return;
+    }
+
+    const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    root.style.setProperty("--theme-reveal-x", `${x}px`);
+    root.style.setProperty("--theme-reveal-y", `${y}px`);
+    root.style.setProperty("--theme-reveal-radius", `${radius}px`);
+    root.classList.add(nextDark ? "theme-reveal-expand" : "theme-reveal-contract");
+    themeTransitioning.current = true;
+
+    const transition = document.startViewTransition(applyTheme);
+    transition.finished.finally(() => {
+      root.classList.remove("theme-reveal-expand", "theme-reveal-contract");
+      root.style.removeProperty("--theme-reveal-x");
+      root.style.removeProperty("--theme-reveal-y");
+      root.style.removeProperty("--theme-reveal-radius");
+      themeTransitioning.current = false;
+    });
+  }
 
   const hits = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -97,6 +154,16 @@ export function AppShell() {
             );
           })}
         </nav>
+        <button
+          type="button"
+          className="rail-theme-toggle"
+          aria-label={isDark ? "切换为浅色主题" : "切换为深色主题"}
+          title={isDark ? "切换为浅色主题" : "切换为深色主题"}
+          onPointerDown={rememberThemePointer}
+          onClick={toggleTheme}
+        >
+          {isDark ? <IconSun /> : <IconMoon />}
+        </button>
         <Menu>
           <MenuButton className="rail-avatar" aria-label="账号">
             运

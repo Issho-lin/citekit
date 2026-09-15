@@ -350,3 +350,21 @@ export function IconSpark({ size = 16 }: { size?: number }) {
     </svg>
   );
 }
+
+
+export function IconSun({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.72 5.28l-1.42 1.42M6.7 17.3l-1.42 1.42M18.72 18.72l-1.42-1.42M6.7 6.7 5.28 5.28" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconMoon({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M20.3 15.1A8.6 8.6 0 0 1 8.9 3.7a8.6 8.6 0 1 0 11.4 11.4Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
