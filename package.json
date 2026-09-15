@@ -7,7 +7,7 @@
     "dev": "concurrently -n web,api -c cyan,magenta \"pnpm --dir web dev\" \"uv --directory server run citekit-server\"",
     "dev:web": "pnpm --dir web dev",
     "dev:server": "uv --directory server run citekit-server",
-    "dev:db": "docker compose up -d mysql qdrant minio",
+    "dev:db": "docker compose up -d mysql qdrant minio opensearch",
     "start": "pnpm dev",
     "check:web": "pnpm --dir web exec tsc --noEmit",
     "check:server": "uv --directory server run python -m unittest discover tests",

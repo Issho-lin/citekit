@@ -16,6 +16,7 @@ from citekit_server.kb.ingest import resume_interrupted_ingest
 from citekit_server.tools.mcp import router as mcp_router
 from citekit_server.tools.api import router as tools_router
 from citekit_server.catalog.seed import seed_if_empty
+from citekit_server.infra.search_index import rebuild_from_mysql
 from citekit_server.infra.storage import ensure_bucket, migrate_local_uploads
 
 
@@ -28,6 +29,9 @@ async def lifespan(_app: FastAPI):
         seed_if_empty(db)
         if migrate_local_uploads(db.query(UploadedFileRow).all()):
             db.commit()
+        # MySQL is the source of truth. Rebuild at startup so an interrupted
+        # deployment never leaves historic chunks absent from lexical search.
+        rebuild_from_mysql(db)
     finally:
         db.close()
     threading.Thread(target=resume_interrupted_ingest, daemon=True).start()

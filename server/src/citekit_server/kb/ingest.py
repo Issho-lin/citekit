@@ -21,6 +21,7 @@ from citekit_server.kb.process import Unit, ProcessResult, embed_items, run_proc
 from citekit_server.schemas import PreviewChunk, PreviewOut, ProcessConfigIn
 from citekit_server.infra.storage import as_local_path
 from citekit_server.infra.upstream import embed_texts
+from citekit_server.infra.search_index import replace_source
 from citekit_server.infra.vectors import delete_chunk_points, delete_source_points, upsert_points
 from citekit_server.catalog.logic import ensure_workspace, pick_active
 
@@ -263,21 +264,23 @@ def ingest_source(source_id: str, attempt: int = 0) -> None:
         delete_source_points(kb.id, source.id)
 
         points: list[PointStruct] = []
+        chunk_rows: list[ChunkRow] = []
         for index, (chunk_id, unit) in enumerate(units_with_id, start=1):
             locator = f"{source.locator or source.title} #{index}"
-            db.add(
-                ChunkRow(
-                    id=chunk_id,
-                    kb_id=kb.id,
-                    source_id=source.id,
-                    title=unit.title[:255],
-                    text=unit.text,
-                    locator=locator,
-                    position=index,
-                    answer=unit.answer or None,
-                    indexes=unit.indexes or None,
-                )
+            row = ChunkRow(
+                id=chunk_id,
+                kb_id=kb.id,
+                source_id=source.id,
+                title=unit.title[:255],
+                text=unit.text,
+                locator=locator,
+                position=index,
+                answer=unit.answer or None,
+                indexes=unit.indexes or None,
             )
+            db.add(row)
+            chunk_rows.append(row)
+        db.flush()
         for (chunk_id, kind), vector in zip(meta, vectors, strict=True):
             points.append(
                 PointStruct(
@@ -298,6 +301,16 @@ def ingest_source(source_id: str, attempt: int = 0) -> None:
         source.error_message = None
         source.updated_at = now_stamp()
         db.commit()
+        # Synchronize only after the authoritative MySQL transaction commits.
+        # If OpenSearch is unavailable, leave the source visibly failed; startup
+        # reconciliation replays the committed MySQL state before serving traffic.
+        try:
+            replace_source(chunk_rows, kb_id=kb.id, source_id=source.id)
+        except RuntimeError as exc:
+            source.status = "error"
+            source.error_message = str(exc)
+            source.updated_at = now_stamp()
+            db.commit()
     except Exception as exc:
         db.rollback()
         if attempt < 2 and _is_deadlock(exc):

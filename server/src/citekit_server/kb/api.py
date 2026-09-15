@@ -53,6 +53,7 @@ from citekit_server.infra.storage import (
     open_object,
     put_bytes,
 )
+from citekit_server.infra.search_index import delete_kb as delete_kb_index, delete_source as delete_source_index, index_chunk
 from citekit_server.infra.vectors import delete_source_points, drop_kb
 from citekit_server.catalog.logic import ensure_workspace, pick_active
 
@@ -223,6 +224,8 @@ def delete_kb(kb_id: str, db: Session = Depends(get_db)) -> dict[str, bool]:
         if item:
             db.delete(item)
     db.commit()
+    for kid_id in drop:
+        delete_kb_index(kid_id)
     return {"ok": True}
 
 
@@ -399,8 +402,10 @@ def delete_source(source_id: str, db: Session = Depends(get_db)) -> dict[str, bo
     db.query(ChunkRow).filter(ChunkRow.source_id == row.id).delete()
     delete_source_points(row.kb_id, row.id)
     _forget_upload(db, row.file_id, except_source_id=row.id)
+    kb_id, source_id = row.kb_id, row.id
     db.delete(row)
     db.commit()
+    delete_source_index(kb_id, source_id)
     return {"ok": True}
 
 
@@ -511,6 +516,10 @@ def patch_chunk(chunk_id: str, body: ChunkPatch, db: Session = Depends(get_db)) 
     except RuntimeError as exc:
         raise HTTPException(400, str(exc)) from exc
     db.commit()
+    try:
+        index_chunk(row)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
     db.refresh(row)
     return chunk_to_out(row)
 

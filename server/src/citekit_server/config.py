@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     database_url: str = "mysql+pymysql://citekit:citekit@127.0.0.1:3306/citekit?charset=utf8mb4"
     qdrant_url: str = "http://127.0.0.1:6333"
+    opensearch_url: str = "http://127.0.0.1:9200"
     data_dir: Path = _SERVER_DIR / "data"
     minio_endpoint: str = "127.0.0.1:9000"
     minio_access_key: str = "citekit"

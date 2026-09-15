@@ -1,81 +1,19 @@
 from __future__ import annotations
 
-import math
-import re
-from collections import Counter
-
 from sqlalchemy.orm import Session
 
 from citekit_server.calls.log import call_scope
 from citekit_server.db import AiModelRow, ChunkRow, KnowledgeBaseRow, SourceRow
-from citekit_server.kb.chunking import index_text
 from citekit_server.kb.ingest import embedding_model, resolve_auth
 from citekit_server.schemas import HitTrace, SearchDebug, SearchDropped, SearchHit, SearchIn, SearchOut
 from citekit_server.serialize import chunk_to_out
+from citekit_server.infra.search_index import search as lexical_search
 from citekit_server.infra.upstream import embed_texts, rerank_texts
 from citekit_server.infra.vectors import search as vector_search
 
 
-_PUNCT = re.compile(r"[\s\u3000，。；、：:！!？?（）()【】\[\]《》<>\"'“”‘’·\-—…]+")
-_LATIN = re.compile(r"[a-z0-9]+")
-_CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
-BM25_K1 = 1.2
-BM25_B = 0.75
 RRF_K = 60
 RETRIEVE_N = 50
-
-
-def _blob(row: ChunkRow) -> str:
-    bits = [row.title, row.text, row.answer or ""]
-    if isinstance(row.indexes, list):
-        for item in row.indexes:
-            if isinstance(item, dict):
-                bits.append(str(item.get("text") or ""))
-            else:
-                bits.append(str(item))
-    return index_text(" ".join(bits))
-
-
-def _analyze(text: str) -> list[str]:
-    """Latin tokens + overlapping CJK bigrams (Lucene CJKAnalyzer)."""
-    folded = _PUNCT.sub(" ", (text or "").strip().lower())
-    terms = _LATIN.findall(folded)
-    for run in _CJK_RUN.findall(folded):
-        if len(run) == 1:
-            terms.append(run)
-        else:
-            terms.extend(run[i : i + 2] for i in range(len(run) - 1))
-    return terms
-
-
-def _bm25(query: str, docs: dict[str, str]) -> dict[str, float]:
-    q_terms = list(dict.fromkeys(_analyze(query)))
-    if not q_terms or not docs:
-        return {}
-    analyzed = {cid: _analyze(text) for cid, text in docs.items()}
-    n_docs = len(analyzed)
-    avgdl = sum(len(tokens) for tokens in analyzed.values()) / n_docs
-    df: dict[str, int] = {}
-    for tokens in analyzed.values():
-        for term in set(tokens):
-            df[term] = df.get(term, 0) + 1
-    scores: dict[str, float] = {}
-    for cid, tokens in analyzed.items():
-        tf_map = Counter(tokens)
-        length = len(tokens) or 1
-        score = 0.0
-        for term in q_terms:
-            freq = tf_map.get(term, 0)
-            if not freq:
-                continue
-            n = df.get(term, 0)
-            idf = math.log(1.0 + (n_docs - n + 0.5) / (n + 0.5))
-            denom = freq + BM25_K1 * (1 - BM25_B + BM25_B * length / avgdl)
-            score += idf * (freq * (BM25_K1 + 1) / denom)
-        if score > 0:
-            scores[cid] = score
-    return scores
-
 
 def _hit_label(kind: str, base: str) -> str:
     extra = {"child": "子块", "auto": "补充索引", "image": "图片", "title": "标题"}.get(kind)
@@ -217,32 +155,29 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
     source_ids = [row.id for row in sources]
     if not source_ids:
         return SearchOut(hits=[], message="该知识库还没有可检索的数据。请先导入集合并等待就绪。")
-
-    chunks = (
-        db.query(ChunkRow)
-        .filter(ChunkRow.kb_id == kb.id, ChunkRow.source_id.in_(source_ids))
-        .order_by(ChunkRow.position)
-        .all()
-    )
-    if not chunks:
+    if not db.query(ChunkRow.id).filter(ChunkRow.kb_id == kb.id, ChunkRow.source_id.in_(source_ids)).first():
         return SearchOut(hits=[], message="该知识库还没有可检索的数据。请先导入集合并等待就绪。")
 
-    warehouse = (body.warehouse or "").strip()
-    if warehouse:
-        chunks = [row for row in chunks if warehouse.lower() in _blob(row).lower()]
-        if not chunks:
-            return SearchOut(hits=[], message=f"仓库「{warehouse}」下没有可检索的数据。")
-
-    by_id = {row.id: row for row in chunks}
     keyword: dict[str, float] = {}
     semantic: dict[str, tuple[float, str]] = {}
     vector_error: str | None = None
     mode = body.searchMode or "mix"
     pool_n = max(body.limit, RETRIEVE_N)
+    warehouse = (body.warehouse or "").strip()
 
     if mode in {"fullText", "mix"}:
-        scored_kw = _bm25(query, {row.id: _blob(row) for row in chunks})
-        keyword = dict(sorted(scored_kw.items(), key=lambda item: item[1], reverse=True)[:pool_n])
+        # OpenSearch is the sole lexical backend. There is intentionally no
+        # Python/MySQL scan fallback: a failed search backend is a visible error.
+        try:
+            keyword = lexical_search(
+                kb_id=kb.id,
+                query=query,
+                limit=pool_n,
+                source_ids=source_ids,
+                warehouse=warehouse or None,
+            )
+        except RuntimeError as exc:
+            return SearchOut(hits=[], message=str(exc))
 
     if mode in {"embedding", "mix"}:
         try:
@@ -258,13 +193,31 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
         for hit in hits:
             payload = hit.payload or {}
             cid = str(payload.get("chunk_id") or hit.id)
-            if cid not in by_id:
-                continue
             score = float(hit.score or 0)
             kind = str(payload.get("index_type") or "")
             prev = semantic.get(cid)
             if prev is None or score > prev[0]:
                 semantic[cid] = (score, kind)
+
+    candidate_ids = set(keyword) | set(semantic)
+    by_id = {
+        row.id: row
+        for row in db.query(ChunkRow)
+        .filter(ChunkRow.kb_id == kb.id, ChunkRow.source_id.in_(source_ids), ChunkRow.id.in_(candidate_ids or {""}))
+        .all()
+    }
+    # Vector search uses Qdrant filters; preserve the existing warehouse behavior
+    # by applying its text predicate to vector candidates before fusion.
+    if warehouse:
+        lowered = warehouse.lower()
+        semantic = {
+            cid: item
+            for cid, item in semantic.items()
+            if cid in by_id and lowered in " ".join(
+                [by_id[cid].title, by_id[cid].text, by_id[cid].answer or "", str(by_id[cid].indexes or "")]
+            ).lower()
+        }
+    keyword = {cid: score for cid, score in keyword.items() if cid in by_id}
 
     if mode == "mix":
         scored = _rrf_merge(keyword, semantic, body.similarity)
@@ -287,11 +240,14 @@ def search_kb(db: Session, kb: KnowledgeBaseRow, body: SearchIn) -> SearchOut:
             if body.debug
             else None
         )
-        empty_msg = (
-            f"向量检索失败：{vector_error}"
-            if vector_error
-            else f"低于相似度 {body.similarity}，无召回。可调低阈值再试。"
-        )
+        if mode == "fullText":
+            empty_msg = "没有匹配的全文结果。"
+        else:
+            empty_msg = (
+                f"向量检索失败：{vector_error}"
+                if vector_error
+                else f"低于相似度 {body.similarity}，无召回。可调低阈值再试。"
+            )
         return SearchOut(
             hits=[],
             message=empty_msg,

@@ -1,19 +1,51 @@
 import unittest
+from unittest.mock import Mock, patch
 
-from citekit_server.retrieve.logic import _bm25, _rrf_merge, _search_debug
+from citekit_server.infra.search_index import _document, search
+from citekit_server.retrieve.logic import _rrf_merge, _search_debug
 
 
-class Bm25Test(unittest.TestCase):
-    def test_query_term_ranks_matching_doc_higher(self):
-        docs = {"hit": "the cat sat on the mat", "miss": "the dog ran"}
-        scores = _bm25("cat", docs)
-        self.assertGreater(scores["hit"], scores.get("miss", 0))
+class OpenSearchQueryTest(unittest.TestCase):
+    def test_search_scopes_to_kb_and_sources(self):
+        fake = Mock()
+        fake.indices.exists.return_value = True
+        fake.search.return_value = {"hits": {"hits": [{"_id": "hit", "_score": 2.5}]}}
+        with patch("citekit_server.infra.search_index.client", return_value=fake):
+            scores = search(kb_id="kb_a", query="合同解除", limit=50, source_ids=["src_a"])
+        self.assertEqual(scores, {"hit": 2.5})
+        body = fake.search.call_args.kwargs["body"]
+        filters = body["query"]["bool"]["filter"]
+        self.assertIn({"term": {"kb_id": "kb_a"}}, filters)
+        self.assertIn({"terms": {"source_id": ["src_a"]}}, filters)
+        self.assertEqual(body["query"]["bool"]["must"][0]["multi_match"]["fields"], [
+            "title^2", "text", "answer^1.2", "indexes^1.5"
+        ])
+        self.assertEqual(body["sort"], [{"_score": {"order": "desc"}}, {"chunk_id": {"order": "asc"}}])
 
-    def test_cjk_bigrams_match(self):
-        docs = {"hit": "合同解除条款说明", "miss": "天气很好"}
-        scores = _bm25("解除", docs)
-        self.assertIn("hit", scores)
-        self.assertNotIn("miss", scores)
+    def test_warehouse_is_a_server_side_query_filter(self):
+        fake = Mock()
+        fake.indices.exists.return_value = True
+        fake.search.return_value = {"hits": {"hits": []}}
+        with patch("citekit_server.infra.search_index.client", return_value=fake):
+            search(kb_id="kb_a", query="库存", limit=20, warehouse="上海仓")
+        must = fake.search.call_args.kwargs["body"]["query"]["bool"]["must"]
+        self.assertIn({"match_phrase": {"text": "上海仓"}}, must)
+
+    def test_document_strips_urls_and_keeps_search_fields(self):
+        class Row:
+            id = "chunk_a"
+            kb_id = "kb_a"
+            source_id = "src_a"
+            title = "[链接标题](https://example.com)"
+            text = "正文 <https://example.com/path>"
+            answer = None
+            indexes = [{"text": "补充关键词"}]
+            locator = "file #1"
+
+        doc = _document(Row())
+        self.assertEqual(doc["title"], "链接标题")
+        self.assertNotIn("https://", doc["text"])
+        self.assertEqual(doc["indexes"], "补充关键词")
 
 
 class RrfMergeTest(unittest.TestCase):
@@ -39,15 +71,7 @@ class SearchDebugTest(unittest.TestCase):
             title = "弱向量块"
             locator = "file #9"
 
-        debug = _search_debug(
-            {"weak": Row()},
-            {},
-            {"weak": (0.41, "title")},
-            0.6,
-            [],
-            set(),
-            False,
-        )
+        debug = _search_debug({"weak": Row()}, {}, {"weak": (0.41, "title")}, 0.6, [], set(), False)
         self.assertEqual(debug.vectorDroppedCount, 1)
         self.assertEqual(debug.dropped[0].locator, "file #9")
         self.assertIn("低于阈值", debug.dropped[0].reason)
