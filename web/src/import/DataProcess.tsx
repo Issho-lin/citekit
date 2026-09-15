@@ -193,7 +193,7 @@ function LeftRadioCard({
       border="1px solid"
       borderColor={selected ? "primary.400" : "myGray.200"}
       borderRadius="md"
-      bg="white"
+      bg="myGray.0"
       boxShadow={selected ? "0px 0px 0px 2.4px rgba(51, 112, 255, 0.15)" : undefined}
       cursor="pointer"
       _hover={selected ? undefined : { borderColor: "primary.300" }}
@@ -455,7 +455,7 @@ function ChunkSettings({
                   max={100000}
                   step={100}
                   h="34px"
-                  bg="white"
+                  bg="myGray.0"
                   value={value.chunkTriggerMinSize}
                   onChange={(n) => patch({ chunkTriggerMinSize: n })}
                 />
@@ -639,7 +639,7 @@ function ChunkSettings({
                         min={1}
                         max={8}
                         value={value.paragraphChunkDeep}
-                        bg="white"
+                        bg="myGray.0"
                         onChange={(n) => patch({ paragraphChunkDeep: n })}
                       />
                     </Box>

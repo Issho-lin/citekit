@@ -35,7 +35,7 @@ const focusRing = {
 };
 
 const field = {
-  bg: "white",
+  bg: "myGray.0",
   border: "1px solid",
   borderColor: "myGray.200",
   borderRadius: "6px",
@@ -79,40 +79,33 @@ export const theme = extendTheme({
         fontWeight: 500,
         borderRadius: "md",
       },
-      defaultProps: {
-        colorScheme: "primary",
-        size: "sm",
-      },
-      sizes: {
-        sm: { h: "36px", px: "14px", fontSize: "14px" },
-        smSquare: { h: "30px", w: "30px", minH: "30px", px: 0, fontSize: "14px" },
-        xsSquare: { h: "24px", w: "24px", minH: "24px", px: 0, fontSize: "12px" },
-        md: { h: "40px", px: "16px", fontSize: "14px" },
-      },
       variants: {
+        solid: {
+          color: "white",
+        },
         whitePrimary: {
           color: "primary.600",
           border: "1px solid",
           borderColor: "primary.200",
-          bg: "white",
+          bg: "myGray.0",
           _hover: { bg: "primary.50" },
         },
         whiteBase: {
           color: "myGray.600",
           border: "1px solid",
           borderColor: "myGray.250",
-          bg: "white",
+          bg: "myGray.0",
           _hover: { color: "primary.600" },
         },
         whitePrimaryOutline: {
           border: "1px solid",
           borderColor: "myGray.250",
-          bg: "white",
+          bg: "myGray.0",
           color: "myGray.700",
           fontWeight: "normal",
           transition: "border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out",
           _hover: { color: "primary.600", borderColor: "primary.300" },
-          _active: { transform: "none", bg: "white" },
+          _active: { transform: "none", bg: "myGray.0" },
           _expanded: {
             color: "primary.700",
             borderColor: "primary.300",
@@ -128,10 +121,20 @@ export const theme = extendTheme({
           color: "myGray.600",
           border: "1px solid",
           borderColor: "myGray.250",
-          bg: "white",
+          bg: "myGray.0",
           _hover: { color: "red.600", borderColor: "red.300", bg: "red.50" },
           _active: { color: "red.600" },
         },
+      },
+      defaultProps: {
+        colorScheme: "primary",
+        size: "sm",
+      },
+      sizes: {
+        sm: { h: "36px", px: "14px", fontSize: "14px" },
+        smSquare: { h: "30px", w: "30px", minH: "30px", px: 0, fontSize: "14px" },
+        xsSquare: { h: "24px", w: "24px", minH: "24px", px: 0, fontSize: "12px" },
+        md: { h: "40px", px: "16px", fontSize: "14px" },
       },
     },
     Input: {

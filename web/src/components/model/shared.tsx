@@ -62,7 +62,7 @@ export function ProviderAvatar({ provider, size = 20 }: { provider: string; size
         minW={`${size}px`}
         borderRadius="full"
         objectFit="contain"
-        bg="white"
+        bg="myGray.0"
       />
     );
   }

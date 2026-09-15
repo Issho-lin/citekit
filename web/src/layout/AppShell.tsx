@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { flushSync } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Input,
@@ -11,6 +12,7 @@ import {
   ModalContent,
   ModalHeader,
   ModalOverlay,
+  useColorMode,
 } from "@chakra-ui/react";
 import { BrandLogo } from "../components/BrandLogo";
 import { useStore } from "../mock/store";
@@ -39,13 +41,22 @@ const links = [
   { to: "/settings", label: "设置", icon: IconGear },
 ];
 
+function storedThemeIsDark() {
+  try {
+    return localStorage.getItem("citekit-theme") === "dark";
+  } catch {
+    return false;
+  }
+}
+
 export function AppShell() {
   const loc = useLocation();
   const nav = useNavigate();
   const { knowledgeBases, kbsReady, tools, endpoints } = useStore();
   const [q, setQ] = useState("");
   const [jumpOpen, setJumpOpen] = useState(false);
-  const [isDark, setIsDark] = useState(() => localStorage.getItem("citekit-theme") === "dark");
+  const [isDark, setIsDark] = useState(storedThemeIsDark);
+  const { setColorMode } = useColorMode();
   const themePointer = useRef<{ x: number; y: number } | null>(null);
   const themeTransitioning = useRef(false);
   usePageProgress(!kbsReady);
@@ -54,8 +65,13 @@ export function AppShell() {
     // Covers the initial render and non-animated state changes. Animated changes
     // write this synchronously inside the View Transition callback below.
     document.documentElement.dataset.theme = isDark ? "dark" : "light";
-    localStorage.setItem("citekit-theme", isDark ? "dark" : "light");
-  }, [isDark]);
+    setColorMode(isDark ? "dark" : "light");
+    try {
+      localStorage.setItem("citekit-theme", isDark ? "dark" : "light");
+    } catch {
+      // Theme still works when storage is blocked by browser privacy settings.
+    }
+  }, [isDark, setColorMode]);
 
   function rememberThemePointer(event: PointerEvent<HTMLButtonElement>) {
     themePointer.current = { x: event.clientX, y: event.clientY };
@@ -73,7 +89,8 @@ export function AppShell() {
     const root = document.documentElement;
     const applyTheme = () => {
       root.dataset.theme = nextDark ? "dark" : "light";
-      setIsDark(nextDark);
+      setColorMode(nextDark ? "dark" : "light");
+      flushSync(() => setIsDark(nextDark));
     };
 
     if (

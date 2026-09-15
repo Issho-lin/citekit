@@ -40,17 +40,18 @@ const triggerSx = {
     color: "primary.700",
     borderColor: "primary.300",
     boxShadow: "0px 0px 0px 2.4px rgba(51, 112, 255, 0.15)",
-    bg: "#fff",
+    bg: "myGray.0",
   },
 };
 
 const menuPanelSx = {
   px: "6px",
   py: "6px",
-  bg: "white",
-  border: "1px solid #fff",
+  bg: "myGray.0",
+  border: "1px solid",
+  borderColor: "myGray.200",
   borderRadius: "md",
-  boxShadow: "0px 2px 4px rgba(161, 167, 179, 0.25), 0px 0px 1px rgba(121, 141, 159, 0.25)",
+  boxShadow: "lg",
   zIndex: 1800,
 } as const;
 

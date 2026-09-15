@@ -53,7 +53,7 @@ export function KbImportPage() {
     <div className="kb-page">
       <Flex
         flexDirection="column"
-        bg="white"
+        bg="myGray.0"
         h="100%"
         minH={0}
         flex="1"
