@@ -23,7 +23,8 @@ import {
   IconChat,
   IconCheck,
   IconDash,
-  IconGear,
+  IconSliders,
+  IconGitHub,
   IconLink,
   IconMoon,
   IconSun,
@@ -38,7 +39,7 @@ const links = [
   { to: "/agent", label: "对话", icon: IconChat },
   { to: "/calls", label: "调用", icon: IconTrace },
   { to: "/eval", label: "评测", icon: IconCheck },
-  { to: "/settings", label: "设置", icon: IconGear },
+  { to: "/settings", label: "设置", icon: IconSliders },
 ];
 
 function storedThemeIsDark() {
@@ -171,6 +172,16 @@ export function AppShell() {
             );
           })}
         </nav>
+        <a
+          className="rail-github-link"
+          href="https://github.com/Issho-lin/citekit"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="在 GitHub 打开 Citekit 仓库"
+          title="GitHub 仓库"
+        >
+          <IconGitHub />
+        </a>
         <button
           type="button"
           className="rail-theme-toggle"

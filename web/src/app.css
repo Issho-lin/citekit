@@ -4649,16 +4649,15 @@ body,
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1px solid var(--app-border);
+  border: 0;
   border-radius: 6px;
-  background: var(--app-surface-subtle);
+  background: transparent;
   color: var(--app-text-muted);
   cursor: pointer;
 }
 
 .rail-theme-toggle:hover {
-  border-color: var(--app-primary);
-  background: var(--app-primary-soft);
+  background: transparent;
   color: var(--app-primary);
 }
 
@@ -4724,4 +4723,24 @@ body,
 /* Chakra writes this variable on body.chakra-ui-dark, which wins over :root. */
 body.chakra-ui-dark {
   --chakra-colors-chakra-inverse-text: #ffffff !important;
+}
+
+.rail-github-link {
+  width: 32px;
+  height: 32px;
+  margin: 0 0 8px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--app-text-muted);
+  text-decoration: none;
+}
+
+.rail-github-link:hover {
+  color: var(--app-primary);
+}
+
+.rail-github-link:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
 }

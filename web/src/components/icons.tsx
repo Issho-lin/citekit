@@ -221,11 +221,13 @@ export function IconTrace({ size = 20 }: { size?: number }) {
   );
 }
 
-export function IconGear({ size = 20 }: { size?: number }) {
+export function IconSliders({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 4v2M12 18v2M4 12h2M18 12h2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M17.7 6.3l-1.4 1.4M7.7 16.3l-1.4 1.4" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden>
+      <path d="M5 6h14M5 12h14M5 18h14" />
+      <circle cx="9" cy="6" r="2" fill="var(--app-surface, white)" />
+      <circle cx="15" cy="12" r="2" fill="var(--app-surface, white)" />
+      <circle cx="11" cy="18" r="2" fill="var(--app-surface, white)" />
     </svg>
   );
 }
@@ -365,6 +367,14 @@ export function IconMoon({ size = 17 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <path d="M20.3 15.1A8.6 8.6 0 0 1 8.9 3.7a8.6 8.6 0 1 0 11.4 11.4Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconGitHub({ size = 17 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 2C6.477 2 2 6.58 2 12.23c0 4.52 2.865 8.35 6.84 9.7.5.095.683-.224.683-.495 0-.244-.009-1.052-.013-1.908-2.782.622-3.369-1.223-3.369-1.223-.455-1.183-1.11-1.498-1.11-1.498-.908-.637.068-.624.068-.624 1.004.073 1.532 1.055 1.532 1.055.892 1.564 2.34 1.112 2.91.85.091-.665.35-1.112.636-1.367-2.221-.26-4.557-1.138-4.557-5.065 0-1.119.39-2.034 1.03-2.751-.104-.26-.446-1.304.098-2.718 0 0 .84-.277 2.75 1.05A9.37 9.37 0 0 1 12 6.355c.85.004 1.705.118 2.503.347 1.909-1.327 2.748-1.05 2.748-1.05.545 1.414.203 2.458.1 2.718.64.717 1.028 1.632 1.028 2.751 0 3.937-2.34 4.802-4.568 5.057.36.32.68.947.68 1.908 0 1.378-.012 2.488-.012 2.827 0 .274.18.595.688.494C19.14 20.576 22 16.75 22 12.23 22 6.58 17.523 2 12 2Z" />
     </svg>
   );
 }
