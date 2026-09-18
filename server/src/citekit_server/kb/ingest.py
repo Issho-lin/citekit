@@ -215,7 +215,6 @@ def ingest_source(source_id: str, attempt: int = 0) -> None:
         raw, stored, filename = source_file(db, source)
         if not raw and not stored and source.type == "web":
             from citekit_server.kb.web import fetch_web
-
             raw = fetch_web(source.locator, cfg.webSelector)
             source.raw_text = raw
             db.commit()

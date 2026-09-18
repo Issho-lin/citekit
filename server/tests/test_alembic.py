@@ -12,7 +12,7 @@ class AlembicLayoutTests(unittest.TestCase):
     def test_single_head(self) -> None:
         script = ScriptDirectory.from_config(alembic_config())
         heads = script.get_heads()
-        self.assertEqual(heads, ["0004_drop_rewrite_fallback"])
+        self.assertEqual(heads, ["0008_website_link_selector"])
 
     def test_ini_and_versions_exist(self) -> None:
         root = Path(__file__).resolve().parents[1]

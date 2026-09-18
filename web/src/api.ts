@@ -117,7 +117,7 @@ export const api = {
     }),
   deleteKb: (id: string) =>
     request<{ ok: boolean }>(`/api/kbs/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  syncWebsite: (kbId: string, body: { url: string; selector?: string }) =>
+  syncWebsite: (kbId: string, body: { url: string; selector?: string; linkSelector?: string }) =>
     request<{ ok: boolean; maxPages: number; maxDepth: number }>(
       `/api/kbs/${encodeURIComponent(kbId)}/website-sync`,
       { method: "POST", body: JSON.stringify(body) },

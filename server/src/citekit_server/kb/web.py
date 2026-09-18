@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse, urlunparse
+import hashlib
 import re
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -17,39 +18,12 @@ MAX_DEPTH = 3
 MAX_HTML_CHARS = 1_200_000
 MAX_LINKS_PER_PAGE = 80
 _SKIN_RE = re.compile(r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1>")
+_TRAILING_SPACE_RE = re.compile(r"[ \t]+\n")
+_MANY_NEWLINES_RE = re.compile(r"\n{3,}")
 SKIP_EXT = {
-    ".7z",
-    ".avi",
-    ".bmp",
-    ".css",
-    ".csv",
-    ".doc",
-    ".docx",
-    ".gif",
-    ".gz",
-    ".ico",
-    ".jpeg",
-    ".jpg",
-    ".js",
-    ".json",
-    ".mp3",
-    ".mp4",
-    ".pdf",
-    ".png",
-    ".ppt",
-    ".pptx",
-    ".rss",
-    ".svg",
-    ".tar",
-    ".tgz",
-    ".ttf",
-    ".webp",
-    ".woff",
-    ".woff2",
-    ".xls",
-    ".xlsx",
-    ".xml",
-    ".zip",
+    ".7z", ".avi", ".bmp", ".css", ".csv", ".doc", ".docx", ".gif", ".gz", ".ico", ".jpeg", ".jpg",
+    ".js", ".json", ".mp3", ".mp4", ".pdf", ".png", ".ppt", ".pptx", ".rss", ".svg", ".tar", ".tgz",
+    ".ttf", ".webp", ".woff", ".woff2", ".xls", ".xlsx", ".xml", ".zip",
 }
 
 
@@ -58,13 +32,26 @@ class CrawledPage:
     url: str
     title: str
     text: str
+    etag: str = ""
+    last_modified: str = ""
+
+
+def canonical_text(text: str) -> str:
+    """Make harmless rendering whitespace changes invisible to page versioning."""
+    value = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    value = _TRAILING_SPACE_RE.sub("\n", value)
+    return _MANY_NEWLINES_RE.sub("\n\n", value).strip()
+
+
+def content_hash(text: str) -> str:
+    return hashlib.sha256(canonical_text(text).encode("utf-8")).hexdigest()
 
 
 def fetch_web(url: str, selector: str = "") -> str:
     target = normalize_url(url)
     if not target:
         raise RuntimeError("网页链接无效")
-    html = _get_html(target)
+    _, html, _ = _get_html(target)
     return html_from(html, selector, base_url=target)
 
 
@@ -85,9 +72,7 @@ def html_from(raw: str, selector: str = "", base_url: str = "") -> str:
 
 def slim_html(raw: str) -> str:
     text = _SKIN_RE.sub(" ", raw or "")
-    if len(text) > MAX_HTML_CHARS:
-        return text[:MAX_HTML_CHARS]
-    return text
+    return text[:MAX_HTML_CHARS] if len(text) > MAX_HTML_CHARS else text
 
 
 def normalize_url(url: str, base: str = "") -> str | None:
@@ -102,34 +87,36 @@ def normalize_url(url: str, base: str = "") -> str | None:
     if path != "/" and path.endswith("/"):
         path = path.rstrip("/")
     last = path.rsplit("/", 1)[-1]
-    if "." in last:
-        ext = "." + last.rsplit(".", 1)[-1].lower()
-        if ext in SKIP_EXT:
-            return None
+    if "." in last and "." + last.rsplit(".", 1)[-1].lower() in SKIP_EXT:
+        return None
     return urlunparse((parsed.scheme, parsed.netloc.lower(), path, "", parsed.query, ""))
 
 
 def scope_prefix(root: str) -> tuple[str, str]:
+    """Derive a document section boundary from an entry page.
+
+    Documentation sites commonly use extension-less leaf routes.  For nested
+    entries, crawl the containing directory so the entry page's sidebar can
+    discover its sibling pages.  A one-segment path (``/guide``) is treated as
+    an explicit section root; file-like URLs also use their parent directory.
+    """
     parsed = urlparse(root)
-    host = parsed.netloc.lower()
-    path = parsed.path or "/"
-    last = path.rstrip("/").rsplit("/", 1)[-1] if path not in ("", "/") else ""
-    if last and "." in last:
-        parent = path[: path.rfind("/")] or "/"
-        prefix = "/" if parent in ("", "/") else parent.rstrip("/") + "/"
-        return host, prefix
+    host, path = parsed.netloc.lower(), parsed.path or "/"
     if path in ("", "/"):
         return host, "/"
-    prefix = path if path.endswith("/") else path + "/"
-    return host, prefix
+    if path.endswith("/"):
+        return host, path
+    segments = [part for part in path.split("/") if part]
+    last = segments[-1]
+    if len(segments) <= 1:
+        return host, path + "/"
+    parent = path[: path.rfind("/")] or "/"
+    return host, "/" if parent == "/" else parent.rstrip("/") + "/"
 
 
 def in_scope(root: str, url: str) -> bool:
-    origin = urlparse(root)
-    target = urlparse(url)
-    if target.scheme not in ("http", "https"):
-        return False
-    if target.netloc.lower() != origin.netloc.lower():
+    origin, target = urlparse(root), urlparse(url)
+    if target.scheme not in ("http", "https") or target.netloc.lower() != origin.netloc.lower():
         return False
     _, prefix = scope_prefix(root)
     path = target.path or "/"
@@ -139,17 +126,23 @@ def in_scope(root: str, url: str) -> bool:
     return path == stem or path.startswith(prefix) or path.startswith(stem + "/")
 
 
-def links_from(html: str, base: str) -> list[str]:
+def links_from(html: str, base: str, selector: str = "") -> list[str]:
     soup = BeautifulSoup(slim_html(html), "html.parser")
+    query = (selector or "").strip()
+    if query:
+        containers = soup.select(query)
+        if not containers:
+            raise RuntimeError(f"链接选择器「{query}」没有匹配到内容")
+        tags = [link for container in containers for link in container.find_all("a", href=True)]
+    else:
+        tags = soup.find_all("a", href=True)
     found: list[str] = []
     seen: set[str] = set()
-    for tag in soup.find_all("a", href=True):
-        href = str(tag.get("href") or "")
-        url = normalize_url(href, base)
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        found.append(url)
+    for tag in tags:
+        url = normalize_url(str(tag.get("href") or ""), base)
+        if url and url not in seen:
+            seen.add(url)
+            found.append(url)
     return found
 
 
@@ -164,28 +157,14 @@ def page_title(html: str, url: str) -> str:
         title = " ".join(heading.get_text(" ").split())
         if title:
             return title[:255]
-    path = urlparse(url).path.rstrip("/").split("/")[-1]
-    return (path or urlparse(url).netloc)[:255]
+    return (urlparse(url).path.rstrip("/").split("/")[-1] or urlparse(url).netloc)[:255]
 
 
-def crawl_site(
-    root: str,
-    selector: str = "",
-    max_pages: int = MAX_PAGES,
-    max_depth: int = MAX_DEPTH,
-) -> list[CrawledPage]:
-    return list(iter_site_pages(root, selector=selector, max_pages=max_pages, max_depth=max_depth))
-
-
-def iter_site_pages(
-    root: str,
-    selector: str = "",
-    max_pages: int = MAX_PAGES,
-    max_depth: int = MAX_DEPTH,
-) -> Iterator[CrawledPage]:
+def iter_site_pages(root: str, selector: str = "", link_selector: str = "", max_pages: int = MAX_PAGES, max_depth: int = MAX_DEPTH) -> Iterator[CrawledPage]:
     start = normalize_url(root)
     if not start:
         raise RuntimeError("网页链接无效")
+    scope_root = (root or "").strip()
     queue: deque[tuple[str, int]] = deque([(start, 0)])
     seen: set[str] = set()
     yielded = 0
@@ -196,55 +175,52 @@ def iter_site_pages(
                 continue
             seen.add(url)
             try:
-                final, html = _get_html_with(client, url)
+                final, html, headers = _get_html(url, client)
             except (httpx.HTTPError, RuntimeError):
                 continue
             final_url = normalize_url(final, start) or url
-            if not in_scope(start, final_url):
+            if not in_scope(scope_root, final_url):
                 continue
             try:
                 text = html_from(html, selector, base_url=final_url)
             except RuntimeError:
-                _enqueue_links(queue, seen, html, final_url, start, depth, max_depth)
+                _enqueue_links(queue, seen, html, final_url, scope_root, depth, max_depth, link_selector)
                 continue
             yielded += 1
-            yield CrawledPage(url=final_url, title=page_title(html, final_url), text=text)
-            _enqueue_links(queue, seen, html, final_url, start, depth, max_depth)
+            yield CrawledPage(final_url, page_title(html, final_url), text, headers.get("etag", ""), headers.get("last-modified", ""))
+            _enqueue_links(queue, seen, html, final_url, scope_root, depth, max_depth, link_selector)
 
 
-def _enqueue_links(
-    queue: deque[tuple[str, int]],
-    seen: set[str],
-    html: str,
-    final_url: str,
-    start: str,
-    depth: int,
-    max_depth: int,
-) -> None:
+def _enqueue_links(queue: deque[tuple[str, int]], seen: set[str], html: str, final_url: str, start: str, depth: int, max_depth: int, link_selector: str) -> None:
     if depth >= max_depth:
         return
     added = 0
-    for link in links_from(html, final_url):
+    for link in links_from(html, final_url, link_selector):
         if added >= MAX_LINKS_PER_PAGE:
             break
-        if link in seen or not in_scope(start, link):
-            continue
-        queue.append((link, depth + 1))
-        added += 1
+        if link not in seen and in_scope(start, link):
+            queue.append((link, depth + 1))
+            added += 1
 
 
-def _get_html(url: str) -> str:
-    with httpx.Client(follow_redirects=True, timeout=25, headers={"User-Agent": USER_AGENT}) as client:
-        _, html = _get_html_with(client, url)
-        return html
+def http_status(url: str) -> int | None:
+    """Return a definitive status only; transport failures remain unknown."""
+    try:
+        with httpx.Client(follow_redirects=True, timeout=15, headers={"User-Agent": USER_AGENT}) as client:
+            response = client.get(url)
+            return response.status_code
+    except httpx.HTTPError:
+        return None
 
 
-def _get_html_with(client: httpx.Client, url: str) -> tuple[str, str]:
+def _get_html(url: str, client: httpx.Client | None = None) -> tuple[str, str, httpx.Headers]:
+    if client is None:
+        with httpx.Client(follow_redirects=True, timeout=25, headers={"User-Agent": USER_AGENT}) as own:
+            return _get_html(url, own)
     response = client.get(url)
     response.raise_for_status()
-    ctype = (response.headers.get("content-type") or "").lower()
     body = response.text or ""
-    sniff = body[:2000].lower()
+    ctype, sniff = (response.headers.get("content-type") or "").lower(), body[:2000].lower()
     if "html" not in ctype and "<html" not in sniff and "<body" not in sniff:
         raise RuntimeError("不是 HTML 页面")
-    return str(response.url), body
+    return str(response.url), body, response.headers

@@ -69,7 +69,7 @@ interface Store {
     rerankModel?: string;
   }) => Promise<string>;
   updateKnowledgeBase: (id: string, patch: Partial<KnowledgeBase>) => Promise<void>;
-  syncWebsite: (kbId: string, input: { url: string; selector?: string }) => Promise<{ maxPages: number; maxDepth: number }>;
+  syncWebsite: (kbId: string, input: { url: string; selector?: string; linkSelector?: string }) => Promise<{ maxPages: number; maxDepth: number }>;
   removeKnowledgeBase: (id: string) => Promise<void>;
   addSlice: (input: {
     kbId: string;
@@ -270,6 +270,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       parentId?: string;
       websiteUrl?: string;
       websiteSelector?: string;
+      websiteLinkSelector?: string;
       apiDatasetServer?: ApiDatasetServer;
       vectorModel?: string;
       llmModel?: string;
@@ -298,9 +299,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   );
 
   const syncWebsite = useCallback(
-    async (kbId: string, input: { url: string; selector?: string }) => {
+    async (kbId: string, input: { url: string; selector?: string; linkSelector?: string }) => {
       const result = await api.syncWebsite(kbId, input);
       await reloadKbs();
+      // Website sync runs in the API background. Refresh the source list while
+      // it is discovering and training pages so users never need a manual reload.
+      for (const delay of [1_000, 3_000, 6_000, 10_000, 15_000, 22_000]) {
+        window.setTimeout(() => void reloadKbs().catch(() => undefined), delay);
+      }
       return { maxPages: result.maxPages, maxDepth: result.maxDepth };
     },
     [reloadKbs],

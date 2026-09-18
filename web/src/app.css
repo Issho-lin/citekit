@@ -1682,6 +1682,46 @@ body {
   color: var(--app-text);
 }
 
+.collection-meta-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--app-primary-soft, rgba(50, 100, 255, 0.08));
+  color: var(--app-primary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  text-decoration: none;
+}
+
+
+.collection-meta-link-url {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collection-meta-link:hover {
+  background: var(--app-primary-soft-hover, rgba(50, 100, 255, 0.14));
+  text-decoration: none;
+}
+
+.collection-meta-link:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.collection-meta-code {
+  font-family: var(--app-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  word-break: break-all;
+}
+
 .file-reader-head {
   min-width: 0;
 }

@@ -205,20 +205,13 @@ export function KbDetailPage() {
                       ))}
                     </span>
                   )}
-                  {kb.websiteUrl && (
-                    <a className="mono" href={kb.websiteUrl} target="_blank" rel="noreferrer">
-                      {kb.websiteUrl}
-                    </a>
-                  )}
                 </div>
                 <label className="ds-search col-search">
                   <IconSearch />
                   <input value={q} placeholder="搜索" onChange={(e) => setQ(e.target.value)} />
                 </label>
                 {kb.kind === "website" ? (
-                  <Button onClick={() => setWebsiteOpen(true)}>
-                    {kb.websiteUrl ? "配置" : "开始配置"}
-                  </Button>
+                  <Button onClick={() => setWebsiteOpen(true)}>{kb.websiteUrl ? "配置同步入口" : "配置同步入口"}</Button>
                 ) : isThirdPartyKind(kb.kind) ? (
                   <Box as="button" type="button" onClick={() => goImport("apiDataset")}>
                     <ImportActionFace label="添加文件" />
@@ -264,18 +257,9 @@ export function KbDetailPage() {
 
               {shown.length === 0 ? (
                 kb.kind === "website" && !kb.websiteUrl ? (
-                  <Empty
-                    text={
-                      <>
-                        还没有关联网站，{" "}
-                        <button type="button" className="linkish" onClick={() => setWebsiteOpen(true)}>
-                          点击配置网站
-                        </button>
-                      </>
-                    }
-                  />
+                  <Empty text="尚未配置站点同步入口。" />
                 ) : kb.kind === "website" ? (
-                  <Empty text="正在抓取，或站点没有可抽取的静态页。稍后刷新；动态站点可能抓不到。" />
+                  <Empty text="正在抓取，或站点没有可抽取的静态页。" />
                 ) : (
                   <Empty text="数据集空空如也" />
                 )
@@ -378,6 +362,7 @@ export function KbDetailPage() {
         </div>
         <KbInfoPanel kb={kb} />
       </div>
+
 
       {websiteOpen && <WebsiteConfigModal kb={kb} onClose={() => setWebsiteOpen(false)} />}
 

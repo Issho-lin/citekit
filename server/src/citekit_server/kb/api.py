@@ -37,10 +37,10 @@ from citekit_server.schemas import (
     SourceIn,
     SourceOut,
     SourcePatch,
-    ChunkOut,
-    ChunkPatch,
     WebsiteSyncIn,
     WebsiteSyncOut,
+    ChunkOut,
+    ChunkPatch,
 )
 from citekit_server.serialize import chunk_to_out, kb_to_out, source_to_out
 from citekit_server.kb.parse import extract_text
@@ -152,6 +152,7 @@ def create_kb(body: KnowledgeBaseIn, db: Session = Depends(get_db)) -> Knowledge
         parent_id=body.parentId,
         website_url=body.websiteUrl,
         website_selector=body.websiteSelector,
+        website_link_selector=body.websiteLinkSelector,
         api_dataset_server=body.apiDatasetServer,
         vector_model=vector_model,
         llm_model=body.llmModel or ws.llm_model or pick_active(db, "llm"),
@@ -180,6 +181,7 @@ def patch_kb(kb_id: str, body: KnowledgeBasePatch, db: Session = Depends(get_db)
         "parentId": "parent_id",
         "websiteUrl": "website_url",
         "websiteSelector": "website_selector",
+        "websiteLinkSelector": "website_link_selector",
         "apiDatasetServer": "api_dataset_server",
         "vectorModel": "vector_model",
         "llmModel": "llm_model",
@@ -287,44 +289,28 @@ def preview(kb_id: str, body: PreviewIn, db: Session = Depends(get_db)) -> Previ
 
 
 @router.post("/kbs/{kb_id}/website-sync", response_model=WebsiteSyncOut)
-def website_sync(
-    kb_id: str,
-    body: WebsiteSyncIn,
-    background: BackgroundTasks,
-    db: Session = Depends(get_db),
-) -> WebsiteSyncOut:
+def website_sync(kb_id: str, body: WebsiteSyncIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> WebsiteSyncOut:
     kb = _kb(db, kb_id)
+    if kb.kind != "website":
+        raise HTTPException(400, "仅 Web 站点同步知识库支持此操作")
     url = normalize_url(body.url)
     if not url:
         raise HTTPException(400, "请填写有效的网站地址")
-    selector = (body.selector or "").strip()
     kb.website_url = url
-    kb.website_selector = selector
+    kb.website_selector = (body.selector or "").strip()
+    kb.website_link_selector = (body.linkSelector or "").strip()
+    # Seed the list before yielding to the background worker so the UI can
+    # immediately show that the requested sync has started.
     seed = (
         db.query(SourceRow)
         .filter(SourceRow.kb_id == kb.id, SourceRow.type == "web", SourceRow.locator == url)
         .one_or_none()
     )
+    process = ProcessConfigIn(webSelector=kb.website_selector).model_dump()
     if seed is None:
-        db.add(
-            SourceRow(
-                id=new_id("src"),
-                kb_id=kb.id,
-                type="web",
-                title=url,
-                locator=url,
-                acl="internal",
-                status="syncing",
-                process=ProcessConfigIn(webSelector=selector).model_dump(),
-                updated_at=now_stamp(),
-                chunk_count=0,
-            )
-        )
+        db.add(SourceRow(id=new_id("src"), kb_id=kb.id, type="web", title=url, locator=url, acl="internal", status="syncing", process=process, updated_at=now_stamp(), chunk_count=0))
     else:
-        seed.status = "syncing"
-        seed.error_message = None
-        seed.process = ProcessConfigIn(webSelector=selector).model_dump()
-        seed.updated_at = now_stamp()
+        seed.status, seed.error_message, seed.process, seed.updated_at = "syncing", None, process, now_stamp()
     db.commit()
     background.add_task(run_website_sync, kb.id)
     return WebsiteSyncOut(ok=True, maxPages=MAX_PAGES, maxDepth=MAX_DEPTH)
@@ -358,8 +344,12 @@ def create_source(
         locator = locator or uploaded.name
         title = title or uploaded.name
     source_type = body.type or ("manual" if raw_text and not file_id else "upload")
-    web_url = source_type == "web" and locator.startswith(("http://", "https://"))
-    needs_train = bool(file_id or raw_text or web_url) and source_type != "folder"
+    web_url = source_type == "web"
+    if web_url:
+        locator = normalize_url(locator) or ""
+        if not locator:
+            raise HTTPException(400, "请填写有效的网页地址")
+    needs_train = bool(file_id or raw_text) and source_type != "folder"
     row = SourceRow(
         id=new_id("src"),
         kb_id=kb.id,
@@ -378,7 +368,9 @@ def create_source(
     db.add(row)
     db.commit()
     db.refresh(row)
-    if needs_train:
+    if web_url:
+        background.add_task(ingest_source, row.id)
+    elif needs_train:
         background.add_task(ingest_source, row.id)
     return source_to_out(row)
 

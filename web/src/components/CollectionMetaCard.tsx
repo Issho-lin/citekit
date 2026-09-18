@@ -48,19 +48,43 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
           <div className="collection-meta-value">{item.value}</div>
         </div>
       ))}
-      <Button
-        variant="whitePrimary"
-        mt={2}
-        onClick={() => {
-          if (source.hasOriginal === false) {
-            toast("该集合没有原文件");
-            return;
-          }
-          reader.onOpen();
-        }}
-      >
-        阅读原文件
-      </Button>
+      {source.type === "web" && process.webSelector ? (
+        <div className="collection-meta-row">
+          <div className="collection-meta-label">正文选择器</div>
+          <div className="collection-meta-value collection-meta-code">{process.webSelector}</div>
+        </div>
+      ) : null}
+      {source.type === "web" ? (
+        <div className="collection-meta-row">
+          <div className="collection-meta-label">来源</div>
+          <a
+            className="collection-meta-link"
+            href={source.locator}
+            target="_blank"
+            rel="noreferrer"
+            title={source.locator}
+            aria-label={`打开网页地址：${source.locator}`}
+          >
+            <span className="collection-meta-link-url">{source.locator}</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      ) : null}
+      {source.type !== "web" ? (
+        <Button
+          variant="whitePrimary"
+          mt={2}
+          onClick={() => {
+            if (source.hasOriginal === false) {
+              toast("该集合没有原文件");
+              return;
+            }
+            reader.onOpen();
+          }}
+        >
+          阅读原文件
+        </Button>
+      ) : null}
       {reader.isOpen ? (
         <OriginalFileModal source={source} isOpen={reader.isOpen} onClose={reader.onClose} />
       ) : null}

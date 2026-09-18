@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, JSON, String, Text
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from citekit_server.db.base import Base
@@ -23,6 +25,7 @@ class KnowledgeBaseRow(Base):
     using_rerank: Mapped[bool] = mapped_column(Boolean, default=False)
     website_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     website_selector: Mapped[str | None] = mapped_column(Text, nullable=True)
+    website_link_selector: Mapped[str | None] = mapped_column(Text, nullable=True)
     api_dataset_server: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
@@ -54,6 +57,19 @@ class SourceRow(Base):
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[str] = mapped_column(String(32), default="")
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Web contents are fingerprinted after extraction, not from raw HTML.
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_seen_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    etag: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    last_modified: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
+class WebsiteSyncLockRow(Base):
+    __tablename__ = "website_sync_locks"
+
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), primary_key=True)
+    owner_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    locked_until: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
 
 
 class ChunkRow(Base):

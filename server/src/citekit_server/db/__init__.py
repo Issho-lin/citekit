@@ -3,7 +3,7 @@ from citekit_server.catalog.tables import AiModelRow, ProviderRow, WorkspaceRow
 from citekit_server.db.base import Base, SessionLocal, engine, get_db
 from citekit_server.db.migrate import apply_migrations
 from citekit_server.eval.tables import EvalCaseRow, EvalRunItemRow, EvalRunRow
-from citekit_server.kb.tables import ChunkRow, KnowledgeBaseRow, SourceRow, UploadedFileRow
+from citekit_server.kb.tables import ChunkRow, KnowledgeBaseRow, SourceRow, UploadedFileRow, WebsiteSyncLockRow
 from citekit_server.tools.tables import McpEndpointRow, ToolRow
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "SourceRow",
     "ToolRow",
     "UploadedFileRow",
+    "WebsiteSyncLockRow",
     "WorkspaceRow",
     "apply_migrations",
     "engine",

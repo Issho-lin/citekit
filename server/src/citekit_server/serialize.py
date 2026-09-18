@@ -98,6 +98,7 @@ def kb_to_out(row: KnowledgeBaseRow, doc_count: int = 0) -> KnowledgeBaseOut:
         parentId=row.parent_id,
         websiteUrl=row.website_url,
         websiteSelector=row.website_selector,
+        websiteLinkSelector=row.website_link_selector,
         apiDatasetServer=row.api_dataset_server,
         vectorModel=row.vector_model,
         llmModel=row.llm_model,

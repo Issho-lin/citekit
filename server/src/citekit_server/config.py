@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     minio_secret_key: str = "citekitsecret"
     minio_bucket: str = "citekit"
     minio_secure: bool = False
+    website_sync_lease_seconds: int = 30 * 60
 
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]

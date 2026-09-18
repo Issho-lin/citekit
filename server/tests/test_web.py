@@ -1,6 +1,6 @@
 import unittest
 
-from citekit_server.kb.web import html_from, in_scope, links_from, normalize_url, page_title, scope_prefix
+from citekit_server.kb.web import canonical_text, content_hash, html_from, in_scope, links_from, normalize_url, page_title, scope_prefix
 
 
 class HtmlFromTest(unittest.TestCase):
@@ -67,10 +67,24 @@ class CrawlScopeTest(unittest.TestCase):
         self.assertFalse(in_scope(root, "https://docs.example.com/blog/hi"))
         self.assertFalse(in_scope(root, "https://other.example.com/guide/hi"))
 
-    def test_file_root_uses_parent_dir(self):
+    def test_nested_page_entry_crawls_its_parent_section(self):
+        root = "https://api-docs.example.com/docs/userguide/faqs/authentication"
+        self.assertEqual(scope_prefix(root), ("api-docs.example.com", "/docs/userguide/faqs/"))
+        self.assertTrue(in_scope(root, "https://api-docs.example.com/docs/userguide/faqs/authentication"))
+        self.assertTrue(in_scope(root, "https://api-docs.example.com/docs/userguide/faqs/error-code"))
+        self.assertFalse(in_scope(root, "https://api-docs.example.com/docs/userguide/getting-started"))
+
+    def test_section_entry_keeps_its_own_subtree(self):
+        root = "https://api-docs.example.com/faqs"
+        self.assertEqual(scope_prefix(root), ("api-docs.example.com", "/faqs/"))
+        self.assertTrue(in_scope(root, "https://api-docs.example.com/faqs/authentication"))
+
+
+    def test_file_entry_uses_parent_directory(self):
         root = "https://docs.example.com/guide/intro.html"
         self.assertEqual(scope_prefix(root), ("docs.example.com", "/guide/"))
         self.assertTrue(in_scope(root, "https://docs.example.com/guide/setup.html"))
+
 
     def test_links_from_keeps_same_page_links_only_after_normalize(self):
         html = """
@@ -89,3 +103,35 @@ class CrawlScopeTest(unittest.TestCase):
         self.assertEqual(page_title("<html><title> 手册 </title></html>", "https://x/a"), "手册")
         self.assertEqual(page_title("<h1>安装</h1>", "https://x/docs/setup"), "安装")
         self.assertEqual(page_title("<p>无标题</p>", "https://x/docs/setup"), "setup")
+
+
+class ContentHashTest(unittest.TestCase):
+    def test_ignores_rendering_whitespace(self):
+        self.assertEqual(content_hash("标题  \r\n\r\n\r\n正文 \n"), content_hash("标题\n\n正文"))
+        self.assertEqual(canonical_text(" a \r\n\r\n\r\n b "), "a\n\n b")
+
+    def test_changes_for_meaningful_content(self):
+        self.assertNotEqual(content_hash("版本一"), content_hash("版本二"))
+
+
+class WebSourceContractTest(unittest.TestCase):
+    def test_distinct_urls_have_distinct_stable_fingerprints(self):
+        # Source-level identity is the normalized URL; content versioning is separate.
+        first = normalize_url("https://docs.example.com/a/#part")
+        second = normalize_url("https://docs.example.com/b")
+        self.assertEqual(first, "https://docs.example.com/a")
+        self.assertEqual(second, "https://docs.example.com/b")
+        self.assertNotEqual(first, second)
+
+
+class LinkDiscoverySelectorTest(unittest.TestCase):
+    def test_only_reads_links_inside_configured_navigation(self):
+        html = """
+        <nav class='docs-nav'><a href='/guide/a'>A</a></nav>
+        <article><a href='/guide/external-reference'>reference</a></article>
+        """
+        self.assertEqual(links_from(html, "https://docs.example.com/guide", ".docs-nav"), ["https://docs.example.com/guide/a"])
+
+    def test_rejects_unmatched_navigation_selector(self):
+        with self.assertRaises(RuntimeError):
+            links_from("<a href='/a'>A</a>", "https://docs.example.com", ".missing")

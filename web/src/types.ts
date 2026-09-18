@@ -112,6 +112,7 @@ export interface KnowledgeBase {
   parentId?: string;
   websiteUrl?: string;
   websiteSelector?: string;
+  websiteLinkSelector?: string;
   apiDatasetServer?: ApiDatasetServer;
   vectorModel: string;
   llmModel: string;

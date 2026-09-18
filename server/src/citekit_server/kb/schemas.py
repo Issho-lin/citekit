@@ -47,6 +47,7 @@ class KnowledgeBaseOut(BaseModel):
     parentId: str | None = None
     websiteUrl: str | None = None
     websiteSelector: str | None = None
+    websiteLinkSelector: str | None = None
     apiDatasetServer: dict | None = None
     vectorModel: str = ""
     llmModel: str = ""
@@ -66,6 +67,7 @@ class KnowledgeBaseIn(BaseModel):
     parentId: str | None = None
     websiteUrl: str | None = None
     websiteSelector: str | None = None
+    websiteLinkSelector: str | None = None
     apiDatasetServer: dict | None = None
     vectorModel: str | None = None
     llmModel: str | None = None
@@ -80,6 +82,7 @@ class KnowledgeBasePatch(BaseModel):
     parentId: str | None = None
     websiteUrl: str | None = None
     websiteSelector: str | None = None
+    websiteLinkSelector: str | None = None
     apiDatasetServer: dict | None = None
     vectorModel: str | None = None
     llmModel: str | None = None
@@ -131,6 +134,7 @@ class SourceOut(BaseModel):
 class WebsiteSyncIn(BaseModel):
     url: str
     selector: str = ""
+    linkSelector: str = ""
 
 
 class WebsiteSyncOut(BaseModel):
