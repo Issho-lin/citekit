@@ -26,6 +26,21 @@ class FeishuFileOut(BaseModel):
     parentToken: str = ""
 
 
+class FeishuSpaceOut(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+
+
+class FeishuWikiNodeOut(BaseModel):
+    token: str
+    title: str
+    type: str
+    objToken: str
+    hasChild: bool = False
+    parentToken: str = ""
+
+
 class FeishuImportIn(BaseModel):
     folderToken: str = Field(min_length=1, max_length=200)
     tokens: list[str] = Field(min_length=1, max_length=100)
@@ -35,6 +50,13 @@ class FeishuImportIn(BaseModel):
 
 class FeishuImportOut(BaseModel):
     imported: int
+
+
+class FeishuWikiImportIn(BaseModel):
+    spaceId: str = Field(min_length=1, max_length=100)
+    tokens: list[str] = Field(min_length=1, max_length=100)
+    process: ProcessConfigIn | None = None
+    parentId: str | None = None
 
 
 class FeishuFolderOut(BaseModel):
@@ -135,6 +157,47 @@ def save_folder(kb_id: str, body: FeishuFolderIn, db: Session = Depends(get_db))
     return FeishuFolderOut(id=row.id, token=row.folder_token, name=row.folder_name, lastSyncedAt=row.last_synced_at)
 
 
+def _wiki_nodes(space_id: str, parent_token: str, access_token: str) -> list[dict[str, Any]]:
+    page_token = ""
+    result: list[dict[str, Any]] = []
+    while True:
+        params = {"space_id": space_id, "page_size": "50", "page_token": page_token}
+        if parent_token:
+            params["parent_node_token"] = parent_token
+        data = _get(f"/wiki/v2/spaces/{space_id}/nodes", access_token, **params)
+        result.extend(item for item in data.get("items", []) if isinstance(item, dict))
+        if not data.get("has_more"):
+            return result
+        page_token = str(data.get("page_token") or "")
+        if not page_token:
+            return result
+
+
+@router.get("/spaces", response_model=list[FeishuSpaceOut])
+def list_spaces(kb_id: str, db: Session = Depends(get_db)) -> list[FeishuSpaceOut]:
+    kb = _kb(db, kb_id)
+    token = _tenant_token(kb)
+    page_token = ""
+    result: list[FeishuSpaceOut] = []
+    while True:
+        data = _get("/wiki/v2/spaces", token, page_size="50", page_token=page_token)
+        for item in data.get("items", []):
+            if isinstance(item, dict) and item.get("space_id"):
+                result.append(FeishuSpaceOut(id=str(item["space_id"]), name=str(item.get("name") or "未命名知识空间"), description=str(item.get("description") or "")))
+        if not data.get("has_more"):
+            return result
+        page_token = str(data.get("page_token") or "")
+        if not page_token:
+            return result
+
+
+@router.get("/wiki/nodes", response_model=list[FeishuWikiNodeOut])
+def list_wiki_nodes(kb_id: str, spaceId: str = Query(min_length=1, max_length=100), parentToken: str = "", db: Session = Depends(get_db)) -> list[FeishuWikiNodeOut]:
+    kb = _kb(db, kb_id)
+    access_token = _tenant_token(kb)
+    return [FeishuWikiNodeOut(token=str(item.get("node_token") or ""), title=str(item.get("title") or "未命名节点"), type=str(item.get("obj_type") or ""), objToken=str(item.get("obj_token") or ""), hasChild=bool(item.get("has_child")), parentToken=str(item.get("parent_node_token") or "")) for item in _wiki_nodes(spaceId.strip(), parentToken.strip(), access_token) if item.get("node_token")]
+
+
 @router.get("/files", response_model=list[FeishuFileOut])
 def list_files(kb_id: str, folderToken: str = Query(min_length=1, max_length=200), db: Session = Depends(get_db)) -> list[FeishuFileOut]:
     kb = _kb(db, kb_id)
@@ -158,6 +221,62 @@ def preview_file(kb_id: str, folderToken: str = Query(min_length=1, max_length=2
         raise HTTPException(404, "飞书文档不存在或不在该目录中")
     data = _get(f"/docx/v1/documents/{token}/raw_content", access_token)
     return {"name": str(item.get("name") or "飞书文档"), "text": str(data.get("content") or "")}
+
+
+@router.get("/wiki/preview")
+def preview_wiki_node(kb_id: str, token: str = Query(min_length=1, max_length=200), db: Session = Depends(get_db)) -> dict[str, str]:
+    kb = _kb(db, kb_id)
+    access_token = _tenant_token(kb)
+    data = _get(f"/docx/v1/documents/{token}/raw_content", access_token)
+    return {"name": "飞书 Wiki 文档", "text": str(data.get("content") or "")}
+
+
+@router.post("/wiki/import", response_model=FeishuImportOut)
+def import_wiki_files(kb_id: str, body: FeishuWikiImportIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> FeishuImportOut:
+    kb = _kb(db, kb_id)
+    access_token = _tenant_token(kb)
+    nodes: dict[str, dict[str, Any]] = {}
+    pending = [""]
+    visited: set[str] = set()
+    while pending and len(nodes) < 500:
+        parent = pending.pop()
+        if parent in visited:
+            continue
+        visited.add(parent)
+        for item in _wiki_nodes(body.spaceId.strip(), parent, access_token):
+            node_token = str(item.get("node_token") or "")
+            if not node_token:
+                continue
+            nodes[node_token] = item
+            if item.get("has_child"):
+                pending.append(node_token)
+    process = (body.process or ProcessConfigIn()).model_dump()
+    source_ids: list[str] = []
+    imported = 0
+    for document_id in dict.fromkeys(body.tokens):
+        node = nodes.get(document_id)
+        if not node or str(node.get("obj_type") or "") not in {"docx", "doc"} or not node.get("obj_token"):
+            continue
+        obj_token = str(node["obj_token"])
+        data = _get(f"/docx/v1/documents/{obj_token}/raw_content", access_token)
+        text = str(data.get("content") or "").strip()
+        if not text:
+            continue
+        locator = f"https://feishu.cn/wiki/{document_id}"
+        existing = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "feishu", SourceRow.locator == locator).one_or_none()
+        if existing:
+            existing.title, existing.raw_text, existing.process, existing.status, existing.error_message, existing.updated_at = str(node.get("title") or "飞书 Wiki 文档"), text, process, "syncing", None, now_stamp()
+            source_id = existing.id
+        else:
+            row = SourceRow(id=new_id("src"), kb_id=kb_id, parent_id=body.parentId, type="feishu", title=str(node.get("title") or "飞书 Wiki 文档"), locator=locator, acl="internal", status="syncing", process=process, raw_text=text, updated_at=now_stamp(), chunk_count=0)
+            db.add(row)
+            source_id = row.id
+        source_ids.append(source_id)
+        imported += 1
+    db.commit()
+    for source_id in source_ids:
+        background.add_task(ingest_source, source_id)
+    return FeishuImportOut(imported=imported)
 
 
 @router.post("/import", response_model=FeishuImportOut)

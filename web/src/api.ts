@@ -168,6 +168,10 @@ export const api = {
     }),
   listFeishuFolders: (kbId: string) => request<{ id: string; token: string; name: string; lastSyncedAt?: string | null }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/folders`),
   saveFeishuFolder: (kbId: string, body: { token: string; name?: string }) => request<{ id: string; token: string; name: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/folders`, { method: "POST", body: JSON.stringify(body) }),
+  listFeishuSpaces: (kbId: string) => request<{ id: string; name: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/spaces`),
+  listFeishuWikiNodes: (kbId: string, spaceId: string, parentToken = "") => request<{ token: string; title: string; type: string; objToken: string; hasChild: boolean; parentToken: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/nodes?spaceId=${encodeURIComponent(spaceId)}&parentToken=${encodeURIComponent(parentToken)}`),
+  previewFeishuWikiNode: (kbId: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/preview?token=${encodeURIComponent(token)}`),
+  importFeishuWikiFiles: (kbId: string, body: { spaceId: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/import`, { method: "POST", body: JSON.stringify(body) }),
   listFeishuFiles: (kbId: string, folderToken: string) => request<{ token: string; name: string; type: string; url: string; parentToken: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/files?folderToken=${encodeURIComponent(folderToken)}`),
   previewFeishuFile: (kbId: string, folderToken: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/preview?folderToken=${encodeURIComponent(folderToken)}&token=${encodeURIComponent(token)}`),
   importFeishuFiles: (kbId: string, body: { folderToken: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) =>

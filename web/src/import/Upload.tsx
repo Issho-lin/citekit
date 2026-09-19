@@ -53,6 +53,14 @@ export function UploadStep() {
         return;
       }
       if (importSource === "apiDataset" && kbKind === "feishu") {
+        const wiki = JSON.parse(sources[0]?.rawText || "{}") as { spaceId?: string };
+        if (wiki.spaceId) {
+          const result = await api.importFeishuWikiFiles(kbId, { spaceId: wiki.spaceId, tokens: sources.map((item) => item.id), process, parentId });
+          await refreshKnowledgeBases();
+          toast({ title: `已开始导入 ${result.imported} 篇飞书 Wiki 文档`, status: "success" });
+          nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
+          return;
+        }
         if (!folderToken) throw new Error("缺少 Folder Token，请返回第一步重新读取目录");
         const result = await api.importFeishuFiles(kbId, { folderToken, tokens: sources.map((item) => item.id), process, parentId });
         await refreshKnowledgeBases();
