@@ -119,8 +119,13 @@ def _run_site_sync(kb_id: str, lease: WebsiteSyncLease) -> None:
         known = {row.locator: row.id for row in db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "web").all()}
     finally:
         db.close()
+    # A configured website may be a curated subset of a larger crawl.  Subsequent
+    # syncs must only refresh that explicit selection, not silently expand it.
+    selected = set(known)
     seen: set[str] = set()
     for page in iter_site_pages(root, selector, link_selector, MAX_PAGES, MAX_DEPTH):
+        if selected and page.url not in selected:
+            continue
         lease.renew()
         seen.add(page.url)
         source_id, changed = _upsert_page(kb_id, page.url, page.title, page.text, content_hash(page.text), page.etag, page.last_modified, process)

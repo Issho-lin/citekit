@@ -28,7 +28,7 @@ export function ApiDatasetForm({
 }) {
   const [dirOpen, setDirOpen] = useState(false);
   const api = value.apiServer ?? { baseUrl: "", authorization: "", basePath: "" };
-  const feishu = value.feishuServer ?? { appId: "", appSecret: "", folderToken: "" };
+  const feishu = value.feishuServer ?? { appId: "", appSecret: "" };
   const yuque = value.yuqueServer ?? { userId: "", token: "", basePath: "" };
   const dingtalk = value.dingtalkServer ?? { appKey: "", appSecret: "", userId: "" };
 
@@ -84,43 +84,12 @@ export function ApiDatasetForm({
       {kind === "feishu" && (
         <>
           <Flex {...rowProps} alignItems="flex-start">
-            <Box {...labelProps} pt={2}>
-              App ID <Box as="span" color="red.500">*</Box>
-            </Box>
-            <Input
-              w={controlW}
-              bg="myGray.50"
-              placeholder="App ID"
-              maxLength={200}
-              value={feishu.appId}
-              onChange={(e) => onChange({ ...value, feishuServer: { ...feishu, appId: e.target.value } })}
-            />
+            <Box {...labelProps} pt={2}>App ID <Box as="span" color="red.500">*</Box></Box>
+            <Input w={controlW} bg="myGray.50" placeholder="App ID" maxLength={200} value={feishu.appId} onChange={(e) => onChange({ ...value, feishuServer: { ...feishu, appId: e.target.value } })} />
           </Flex>
           <Flex {...rowProps} alignItems="flex-start">
-            <Box {...labelProps} pt={2}>
-              App Secret <Box as="span" color="red.500">*</Box>
-            </Box>
-            <Input
-              w={controlW}
-              bg="myGray.50"
-              placeholder="App Secret"
-              maxLength={200}
-              value={feishu.appSecret}
-              onChange={(e) => onChange({ ...value, feishuServer: { ...feishu, appSecret: e.target.value } })}
-            />
-          </Flex>
-          <Flex {...rowProps} alignItems="flex-start">
-            <Box {...labelProps} pt={2}>
-              Folder Token <Box as="span" color="red.500">*</Box>
-            </Box>
-            <Input
-              w={controlW}
-              bg="myGray.50"
-              placeholder="Folder Token"
-              maxLength={200}
-              value={feishu.folderToken}
-              onChange={(e) => onChange({ ...value, feishuServer: { ...feishu, folderToken: e.target.value } })}
-            />
+            <Box {...labelProps} pt={2}>App Secret <Box as="span" color="red.500">*</Box></Box>
+            <Input w={controlW} bg="myGray.50" type="password" autoComplete="new-password" placeholder="App Secret" maxLength={200} value={feishu.appSecret} onChange={(e) => onChange({ ...value, feishuServer: { ...feishu, appSecret: e.target.value } })} />
           </Flex>
         </>
       )}

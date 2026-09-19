@@ -87,6 +87,17 @@ def workspace_to_out(row: WorkspaceRow) -> WorkspaceOut:
     )
 
 
+
+def _safe_api_dataset_server(value: dict | None) -> dict | None:
+    if not isinstance(value, dict):
+        return value
+    out = {**value}
+    for key, secret_key in (("feishuServer", "appSecret"), ("yuqueServer", "token"), ("dingtalkServer", "appSecret"), ("apiServer", "authorization")):
+        config = out.get(key)
+        if isinstance(config, dict) and secret_key in config:
+            out[key] = {**config, secret_key: mask_secret(str(config.get(secret_key) or ""))}
+    return out
+
 def kb_to_out(row: KnowledgeBaseRow, doc_count: int = 0) -> KnowledgeBaseOut:
     return KnowledgeBaseOut(
         id=row.id,
@@ -99,7 +110,7 @@ def kb_to_out(row: KnowledgeBaseRow, doc_count: int = 0) -> KnowledgeBaseOut:
         websiteUrl=row.website_url,
         websiteSelector=row.website_selector,
         websiteLinkSelector=row.website_link_selector,
-        apiDatasetServer=row.api_dataset_server,
+        apiDatasetServer=_safe_api_dataset_server(row.api_dataset_server),
         vectorModel=row.vector_model,
         llmModel=row.llm_model,
         vlmModel=row.vlm_model,

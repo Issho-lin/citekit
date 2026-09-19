@@ -97,7 +97,7 @@ export interface SearchDebug {
 
 export interface ApiDatasetServer {
   apiServer?: { baseUrl: string; authorization?: string; basePath?: string };
-  feishuServer?: { appId: string; appSecret: string; folderToken: string };
+  feishuServer?: { appId: string; appSecret: string };
   yuqueServer?: { userId: string; token: string; basePath?: string };
   dingtalkServer?: { appKey: string; appSecret: string; userId: string };
 }

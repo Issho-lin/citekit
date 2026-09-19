@@ -54,7 +54,7 @@ export function CreateKbForm({
       toast("请填写接口地址");
       return;
     }
-    if (kind === "feishu" && (!apiServer.feishuServer?.appId || !apiServer.feishuServer.appSecret || !apiServer.feishuServer.folderToken)) {
+    if (kind === "feishu" && (!apiServer.feishuServer?.appId?.trim() || !apiServer.feishuServer.appSecret?.trim())) {
       toast("请填写飞书 App ID / App Secret / Folder Token");
       return;
     }

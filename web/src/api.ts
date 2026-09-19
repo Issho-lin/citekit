@@ -117,6 +117,23 @@ export const api = {
     }),
   deleteKb: (id: string) =>
     request<{ ok: boolean }>(`/api/kbs/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getFeishuConnection: (kbId: string) =>
+    request<{ connected: boolean; expiresAt?: string | null; scopes: string[] }>(
+      `/api/feishu/connections/${encodeURIComponent(kbId)}`,
+    ),
+  startFeishuAuthorization: (kbId: string) =>
+    request<{ authorizationUrl: string }>(`/api/feishu/connections/${encodeURIComponent(kbId)}/authorize`, {
+      method: "POST",
+    }),
+  saveFeishuAppConfig: async (kbId: string, body: { appId: string; appSecret: string }) => {
+    const payload: Record<string, unknown> = { mode: "custom", appId: body.appId.trim(), appSecretEnc: await encryptSecret(body.appSecret.trim()) };
+    return request<{ connected: boolean; expiresAt?: string | null; scopes: string[]; mode: "custom"; appConfigured: boolean; redirectUri: string }>(
+      `/api/feishu/connections/${encodeURIComponent(kbId)}/app`,
+      { method: "PUT", body: JSON.stringify(payload) },
+    );
+  },
+  discoverWebsitePages: (kbId: string, body: { url: string; selector?: string; linkSelector?: string }) => request<{ url: string; title: string; chars: number }[]>(`/api/kbs/${encodeURIComponent(kbId)}/website/discover`, { method: "POST", body: JSON.stringify(body) }),
+  importWebsitePages: (kbId: string, body: { url: string; selector?: string; linkSelector?: string; urls: string[]; process?: ProcessConfig }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/website/import`, { method: "POST", body: JSON.stringify(body) }),
   syncWebsite: (kbId: string, body: { url: string; selector?: string; linkSelector?: string }) =>
     request<{ ok: boolean; maxPages: number; maxDepth: number }>(
       `/api/kbs/${encodeURIComponent(kbId)}/website-sync`,
@@ -149,6 +166,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  listFeishuFolders: (kbId: string) => request<{ id: string; token: string; name: string; lastSyncedAt?: string | null }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/folders`),
+  saveFeishuFolder: (kbId: string, body: { token: string; name?: string }) => request<{ id: string; token: string; name: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/folders`, { method: "POST", body: JSON.stringify(body) }),
+  listFeishuFiles: (kbId: string, folderToken: string) => request<{ token: string; name: string; type: string; url: string; parentToken: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/files?folderToken=${encodeURIComponent(folderToken)}`),
+  previewFeishuFile: (kbId: string, folderToken: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/preview?folderToken=${encodeURIComponent(folderToken)}&token=${encodeURIComponent(token)}`),
+  importFeishuFiles: (kbId: string, body: { folderToken: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) =>
+    request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/import`, { method: "POST", body: JSON.stringify(body) }),
   listSources: (kbId: string) => request<Source[]>(`/api/kbs/${encodeURIComponent(kbId)}/sources`),
   createSource: (
     kbId: string,

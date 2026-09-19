@@ -33,6 +33,7 @@ function bumpVersion(v: string) {
 interface Store {
   knowledgeBases: KnowledgeBase[];
   kbsReady: boolean;
+  refreshKnowledgeBases: () => Promise<void>;
   slices: Slice[];
   sources: Source[];
   tools: RetrievalTool[];
@@ -596,6 +597,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       knowledgeBases,
       kbsReady,
+      refreshKnowledgeBases: reloadKbs,
       slices,
       sources,
       tools,
@@ -648,6 +650,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [
       knowledgeBases,
       kbsReady,
+      reloadKbs,
       slices,
       sources,
       tools,

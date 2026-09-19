@@ -1,6 +1,6 @@
 import type { ProcessConfig } from "../types";
 
-export type ImportSourceKind = "fileLocal" | "fileLink" | "fileCustom" | "apiDataset" | "imageDataset";
+export type ImportSourceKind = "fileLocal" | "fileLink" | "fileCustom" | "apiDataset" | "websiteDataset" | "imageDataset";
 
 export type ImportSourceItemType = {
   id: string;
@@ -21,6 +21,8 @@ export type DatasetImportContextType = {
   importSource: ImportSourceKind;
   parentId: string | undefined;
   kbId: string;
+  folderToken?: string;
+  setFolderToken?: (value: string) => void;
   activeStep: number;
   goToNext: () => void;
   goToPrevious: () => void;

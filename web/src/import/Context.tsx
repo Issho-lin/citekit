@@ -42,6 +42,12 @@ const STEP_MAP: Record<ImportSourceKind, { title: string }[]> = {
     { title: "数据预览" },
     { title: "确认上传" },
   ],
+  websiteDataset: [
+    { title: "发现页面" },
+    { title: "参数设置" },
+    { title: "数据预览" },
+    { title: "确认上传" },
+  ],
   imageDataset: [
     { title: "选择文件" },
     { title: "参数设置" },
@@ -69,12 +75,15 @@ export function DatasetImportContextProvider({
     fillProcess(importSource === "imageDataset" ? { imageIndex: true } : {}),
   );
   const [sources, setSources] = useState<ImportSourceItemType[]>([]);
+  const [folderToken, setFolderToken] = useState("");
 
   const value = useMemo(
     () => ({
       importSource,
       parentId,
       kbId,
+      folderToken,
+      setFolderToken,
       activeStep,
       goToNext,
       goToPrevious,
@@ -83,7 +92,7 @@ export function DatasetImportContextProvider({
       sources,
       setSources,
     }),
-    [importSource, parentId, kbId, activeStep, goToNext, goToPrevious, process, sources],
+    [importSource, parentId, kbId, folderToken, activeStep, goToNext, goToPrevious, process, sources],
   );
 
   return (

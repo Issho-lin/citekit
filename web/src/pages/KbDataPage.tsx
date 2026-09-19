@@ -203,8 +203,12 @@ export function KbDataPage() {
               插入
             </Button>
           </Flex>
-          <Box px={6} pb={2} fontSize="sm" color="myGray.500">
-            块标题单独索引、文档名前缀改过后，需要重新训练，向量才会更新。
+          <Box className="data-retrain-tip" role="note">
+            <Box className="data-retrain-tip-icon">↻</Box>
+            <Box minW={0}>
+              <Box className="data-retrain-tip-title">索引配置已变更</Box>
+              <Box className="data-retrain-tip-text">块标题索引或文档名前缀变更后，需要重新训练，向量才会更新。</Box>
+            </Box>
           </Box>
 
           <Box px={6}>

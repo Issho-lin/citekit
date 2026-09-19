@@ -5,6 +5,7 @@ import { FileApiDataset } from "../import/FileApiDataset";
 import { FileCustomText } from "../import/FileCustomText";
 import { FileImageDataset } from "../import/FileImageDataset";
 import { FileLink } from "../import/FileLink";
+import { WebsiteImport } from "../import/WebsiteImport";
 import { FileLocal } from "../import/FileLocal";
 import type { ImportSourceKind } from "../import/types";
 import { useStore } from "../mock/store";
@@ -13,6 +14,7 @@ function kindFromQuery(source: string | null): ImportSourceKind {
   if (source === "web" || source === "fileLink") return "fileLink";
   if (source === "manual" || source === "fileCustom") return "fileCustom";
   if (source === "api" || source === "apiDataset") return "apiDataset";
+  if (source === "website" || source === "websiteDataset") return "websiteDataset";
   if (source === "image" || source === "imageDataset") return "imageDataset";
   return "fileLocal";
 }
@@ -45,6 +47,8 @@ export function KbImportPage() {
         ? FileCustomText
         : importSource === "apiDataset"
           ? FileApiDataset
+          : importSource === "websiteDataset"
+            ? WebsiteImport
           : importSource === "imageDataset"
             ? FileImageDataset
             : FileLocal;

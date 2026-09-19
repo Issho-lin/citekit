@@ -15,14 +15,15 @@ import {
 } from "@chakra-ui/react";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../api";
 import { useStore } from "../mock/store";
 import { useDatasetImport } from "./Context";
 
 export function UploadStep() {
   const toast = useToast();
   const nav = useNavigate();
-  const { addSource, knowledgeBases } = useStore();
-  const { importSource, parentId, sources, setSources, process, kbId } = useDatasetImport();
+  const { addSource, knowledgeBases, refreshKnowledgeBases } = useStore();
+  const { importSource, parentId, sources, setSources, process, kbId, folderToken } = useDatasetImport();
   const kbKind = knowledgeBases.find((k) => k.id === kbId)?.kind;
   const [isLoading, setIsLoading] = useState(false);
 
@@ -42,6 +43,23 @@ export function UploadStep() {
     if (sources.length === 0) return;
     setIsLoading(true);
     try {
+      if (importSource === "websiteDataset") {
+        const urls = sources.map((item) => item.link).filter((item): item is string => Boolean(item));
+        const config = JSON.parse(sources[0]?.rawText || "{}") as { root?: string; linkSelector?: string };
+        const result = await api.importWebsitePages(kbId, { url: config.root || urls[0] || "", selector: process.webSelector, linkSelector: config.linkSelector, urls, process });
+        await refreshKnowledgeBases();
+        toast({ title: `已开始导入 ${result.imported} 个网页`, status: "success" });
+        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
+        return;
+      }
+      if (importSource === "apiDataset" && kbKind === "feishu") {
+        if (!folderToken) throw new Error("缺少 Folder Token，请返回第一步重新读取目录");
+        const result = await api.importFeishuFiles(kbId, { folderToken, tokens: sources.map((item) => item.id), process, parentId });
+        await refreshKnowledgeBases();
+        toast({ title: `已开始导入 ${result.imported} 篇飞书文档`, status: "success" });
+        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
+        return;
+      }
       const waiting = sources.filter((item) => item.createStatus === "waiting");
       for (const item of waiting) {
         setSources((state) =>

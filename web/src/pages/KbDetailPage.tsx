@@ -211,7 +211,13 @@ export function KbDetailPage() {
                   <input value={q} placeholder="搜索" onChange={(e) => setQ(e.target.value)} />
                 </label>
                 {kb.kind === "website" ? (
-                  <Button onClick={() => setWebsiteOpen(true)}>{kb.websiteUrl ? "配置同步入口" : "配置同步入口"}</Button>
+                  <Menu placement="bottom-end" offset={[0, 5]} autoSelect={false}>
+                    <MenuButton as={Button}>导入与同步</MenuButton>
+                    <MenuList minW="160px" p="6px" border="1px solid #fff" boxShadow="3">
+                      <MenuItem {...menuItemStyle} onClick={() => goImport("websiteDataset")}>发现并导入页面</MenuItem>
+                      {kb.websiteUrl && <MenuItem {...menuItemStyle} onClick={() => setWebsiteOpen(true)}>立即增量同步</MenuItem>}
+                    </MenuList>
+                  </Menu>
                 ) : isThirdPartyKind(kb.kind) ? (
                   <Box as="button" type="button" onClick={() => goImport("apiDataset")}>
                     <ImportActionFace label="添加文件" />

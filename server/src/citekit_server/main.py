@@ -7,11 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from citekit_server import __version__
 from citekit_server.agent.api import router as agent_router
 from citekit_server.catalog.api import router as catalog_router
+from citekit_server.connectors.feishu import router as feishu_router
 from citekit_server.calls.api import router as calls_router
 from citekit_server.config import settings
 from citekit_server.db import SessionLocal, UploadedFileRow, apply_migrations
 from citekit_server.eval.api import router as eval_router
 from citekit_server.kb.api import router as kb_router
+from citekit_server.kb.website_import import router as website_import_router
 from citekit_server.kb.ingest import resume_interrupted_ingest
 from citekit_server.tools.mcp import router as mcp_router
 from citekit_server.tools.api import router as tools_router
@@ -47,7 +49,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(catalog_router)
+app.include_router(feishu_router)
 app.include_router(kb_router)
+app.include_router(website_import_router)
 app.include_router(tools_router)
 app.include_router(eval_router)
 app.include_router(agent_router)

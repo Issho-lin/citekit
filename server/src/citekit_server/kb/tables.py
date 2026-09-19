@@ -84,3 +84,42 @@ class ChunkRow(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     indexes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+class FeishuOAuthStateRow(Base):
+    __tablename__ = "feishu_oauth_states"
+
+    state: Mapped[str] = mapped_column(String(128), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    code_verifier: Mapped[str] = mapped_column(String(160), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+
+
+class FeishuConnectionRow(Base):
+    __tablename__ = "feishu_connections"
+
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), primary_key=True)
+    access_token_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    scopes: Mapped[str] = mapped_column(String(2000), default="")
+
+
+class FeishuAppConfigRow(Base):
+    __tablename__ = "feishu_app_configs"
+
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), primary_key=True)
+    app_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    app_secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class FeishuFolderRow(Base):
+    __tablename__ = "feishu_folders"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    folder_token: Mapped[str] = mapped_column(String(255), nullable=False)
+    folder_name: Mapped[str] = mapped_column(String(255), default="")
+    last_synced_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[str] = mapped_column(String(32), default="")

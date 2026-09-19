@@ -180,7 +180,7 @@ export function AppShell() {
           aria-label="在 GitHub 打开 Citekit 仓库"
           title="GitHub 仓库"
         >
-          <IconGitHub />
+          <IconGitHub size={20} />
         </a>
         <button
           type="button"
@@ -190,7 +190,7 @@ export function AppShell() {
           onPointerDown={rememberThemePointer}
           onClick={toggleTheme}
         >
-          {isDark ? <IconSun /> : <IconMoon />}
+          {isDark ? <IconSun size={20} /> : <IconMoon size={20} />}
         </button>
         <Menu>
           <MenuButton className="rail-avatar" aria-label="账号">
