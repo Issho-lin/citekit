@@ -1,6 +1,7 @@
 import { Box, Button, Checkbox, Flex, Input, Spinner, Stack } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { MySelect } from "../components/MySelect";
 import { useToast } from "../components/Toast";
 import { useStore } from "../mock/store";
 import { useDatasetImport } from "./Context";
@@ -13,7 +14,7 @@ export function FileApiDataset() {
   const { knowledgeBases } = useStore();
   const kb = knowledgeBases.find((item) => item.id === kbId);
   if (kb?.kind !== "feishu") return <UnsupportedDataset kind={kb?.kind} />;
-  if (activeStep === 0) return <FeishuFilePicker mode="wiki" />;
+  if (activeStep === 0) return <FeishuImportPicker />;
   if (activeStep === 1) return <DataProcess />;
   if (activeStep === 2) return <PreviewData />;
   return <UploadStep />;
@@ -21,9 +22,17 @@ export function FileApiDataset() {
 
 type FeishuFile = { token: string; name: string; type: string; url: string };
 
-function FeishuFilePicker({ mode }: { mode: "wiki" | "drive" }) {
-  if (mode === "wiki") return <FeishuWikiPicker />;
-  return <FeishuDrivePicker />;
+function FeishuImportPicker() {
+  const [mode, setMode] = useState<"drive" | "wiki">("drive");
+  return (
+    <Box>
+      <Flex gap={2} mb={4}>
+        <Button size="sm" variant={mode === "drive" ? "solid" : "whiteBase"} onClick={() => setMode("drive")}>云盘文件夹</Button>
+        <Button size="sm" variant={mode === "wiki" ? "solid" : "whiteBase"} onClick={() => setMode("wiki")}>Wiki 知识空间</Button>
+      </Flex>
+      {mode === "drive" ? <FeishuDrivePicker /> : <FeishuWikiPicker />}
+    </Box>
+  );
 }
 
 function FeishuDrivePicker() {
@@ -92,7 +101,7 @@ function FeishuDrivePicker() {
       <Flex className="feishu-import-heading" align="flex-start" justify="space-between">
         <Box>
           <Box className="feishu-import-title">选择飞书文档</Box>
-          <Box className="feishu-import-desc">输入一个飞书文件夹 Token，读取后选择要导入的新版文档。</Box>
+          <Box className="feishu-import-desc">输入一个飞书文件夹 Token，读取后选择要导入的新版文档。应用需具备「获取云空间文件夹下的云文档清单」和「查看新版文档」权限。</Box>
         </Box>
         {files.length > 0 && <Box className="feishu-import-count">已选 {selected.length} / {files.length}</Box>}
       </Flex>
@@ -126,10 +135,35 @@ function FeishuWikiPicker() {
   const [nodes, setNodes] = useState<{ token: string; title: string; type: string; objToken: string; hasChild: boolean }[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  useEffect(() => { void api.listFeishuSpaces(kbId).then(setSpaces).catch((err) => toast(err instanceof Error ? err.message : "读取飞书知识空间失败")); }, [kbId]);
+  const [refreshingSpaces, setRefreshingSpaces] = useState(false);
+  async function refreshSpaces() {
+    setRefreshingSpaces(true);
+    try {
+      const next = await api.listFeishuSpaces(kbId);
+      setSpaces(next);
+      const selectedSpaceId = next.some((space) => space.id === spaceId) ? spaceId : "";
+      setSpaceId(selectedSpaceId);
+      setSelected([]);
+      if (selectedSpaceId) {
+        setLoading(true);
+        try {
+          setNodes(await api.listFeishuWikiNodes(kbId, selectedSpaceId));
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setNodes([]);
+      }
+      toast(next.length ? `已读取 ${next.length} 个知识空间` : "未发现可访问的知识空间");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "读取飞书知识空间失败");
+    } finally {
+      setRefreshingSpaces(false);
+    }
+  }
   async function loadNodes(id = spaceId) { if (!id) return; setLoading(true); try { setSpaceId(id); setNodes(await api.listFeishuWikiNodes(kbId, id)); setSelected([]); } catch (err) { toast(err instanceof Error ? err.message : "读取 Wiki 节点失败"); } finally { setLoading(false); } }
-  async function choose() { if (!selected.length) return; setLoading(true); try { const picked = await Promise.all(selected.map(async (token) => { const node = nodes.find((item) => item.token === token)!; const preview = await api.previewFeishuWikiNode(kbId, node.objToken); return { id: token, createStatus: "waiting" as const, sourceName: preview.name || node.title, rawText: JSON.stringify({ spaceId, objToken: node.objToken, title: node.title }), link: `https://feishu.cn/wiki/${token}` }; })); setSources(picked); goToNext(); } catch (err) { toast(err instanceof Error ? err.message : "读取 Wiki 文档失败"); } finally { setLoading(false); } }
-  return <Box className="feishu-import-panel"><Flex className="feishu-import-heading" align="flex-start" justify="space-between"><Box><Box className="feishu-import-title">选择飞书 Wiki 文档</Box><Box className="feishu-import-desc">选择知识空间，再勾选需要导入的 Wiki 文档节点。</Box></Box></Flex><Flex className="feishu-folder-input" gap={3}><select value={spaceId} onChange={(e) => void loadNodes(e.target.value)} style={{ flex: 1, height: 40, border: "1px solid #e2e8f0", borderRadius: 6, padding: "0 12px" }}><option value="">选择知识空间</option>{spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select><Button onClick={() => void loadNodes()} isLoading={loading} variant="whiteBase">读取节点</Button></Flex>{loading ? <Flex minH="150px" align="center" justify="center"><Spinner /></Flex> : nodes.length ? <Stack className="feishu-file-list" spacing={0}>{nodes.filter((node) => node.type === "docx" || node.type === "doc").map((node) => <Checkbox key={node.token} className="feishu-file-row" isChecked={selected.includes(node.token)} onChange={() => setSelected((items) => items.includes(node.token) ? items.filter((item) => item !== node.token) : [...items, node.token])}><Box className="feishu-file-name">{node.title}</Box><Box className="feishu-file-kind">Wiki 文档</Box></Checkbox>)}</Stack> : <Box className="feishu-import-empty">请选择知识空间后读取节点。</Box>}<Flex className="feishu-import-footer" align="center" justify="space-between"><Box color="myGray.600" fontSize="sm">导入后将按当前处理配置自动切块和索引。</Box><Button onClick={() => void choose()} isDisabled={!selected.length} isLoading={loading}>下一步</Button></Flex></Box>;
+  async function choose() { if (!selected.length) return; setLoading(true); try { const picked = await Promise.all(selected.map(async (token) => { const node = nodes.find((item) => item.token === token)!; const preview = await api.previewFeishuWikiNode(kbId, node.objToken); return { id: token, createStatus: "waiting" as const, sourceName: node.title || preview.name || "飞书 Wiki 文档", rawText: preview.text, connectorMeta: { source: "feishu-wiki", spaceId, objToken: node.objToken }, link: `https://feishu.cn/wiki/${token}` }; })); setSources(picked); goToNext(); } catch (err) { toast(err instanceof Error ? err.message : "读取 Wiki 文档失败"); } finally { setLoading(false); } }
+  return <Box className="feishu-import-panel"><Flex className="feishu-import-heading" align="flex-start" justify="space-between"><Box><Box className="feishu-import-title">选择飞书 Wiki 文档</Box><Box className="feishu-import-desc">选择知识空间，再勾选需要导入的 Wiki 文档节点。</Box></Box></Flex><Flex className="feishu-folder-input" gap={3}><Box flex={1}><MySelect value={spaceId} list={spaces.map((space) => ({ value: space.id, label: space.name, description: space.description || undefined }))} onChange={(id) => void loadNodes(id)} placeholder={spaces.length ? "选择知识空间" : "未发现可访问的知识空间"} isDisabled={!spaces.length} /></Box><Button onClick={() => void refreshSpaces()} isLoading={refreshingSpaces} loadingText="读取中" variant="whiteBase">读取空间</Button></Flex>{!loading && !spaces.length ? <Box className="feishu-import-empty">请先点击“读取空间”。应用需具备「查看知识库」和「查看新版文档」权限，并可访问目标知识空间。</Box> : loading ? <Flex minH="150px" align="center" justify="center"><Spinner /></Flex> : nodes.length ? <Stack className="feishu-file-list" spacing={0}>{nodes.filter((node) => node.type === "docx" || node.type === "doc").map((node) => <Checkbox key={node.token} className="feishu-file-row" isChecked={selected.includes(node.token)} onChange={() => setSelected((items) => items.includes(node.token) ? items.filter((item) => item !== node.token) : [...items, node.token])}><Box className="feishu-file-name">{node.title}</Box><Box className="feishu-file-kind">Wiki 文档</Box></Checkbox>)}</Stack> : <Box className="feishu-import-empty">请选择知识空间后读取节点。</Box>}<Flex className="feishu-import-footer" align="center" justify="space-between"><Box color="myGray.600" fontSize="sm">导入后将按当前处理配置自动切块和索引。</Box><Button onClick={() => void choose()} isDisabled={!selected.length} isLoading={loading}>下一步</Button></Flex></Box>;
 }
 
 function UnsupportedDataset({ kind }: { kind?: string }) {

@@ -53,8 +53,8 @@ export function UploadStep() {
         return;
       }
       if (importSource === "apiDataset" && kbKind === "feishu") {
-        const wiki = JSON.parse(sources[0]?.rawText || "{}") as { spaceId?: string };
-        if (wiki.spaceId) {
+        const wiki = sources[0]?.connectorMeta;
+        if (wiki?.source === "feishu-wiki" && wiki.spaceId) {
           const result = await api.importFeishuWikiFiles(kbId, { spaceId: wiki.spaceId, tokens: sources.map((item) => item.id), process, parentId });
           await refreshKnowledgeBases();
           toast({ title: `已开始导入 ${result.imported} 篇飞书 Wiki 文档`, status: "success" });

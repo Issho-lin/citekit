@@ -14,6 +14,8 @@ export type ImportSourceItemType = {
   file?: File;
   link?: string;
   rawText?: string;
+  /** Connector-only metadata; never replaces the previewable source text. */
+  connectorMeta?: Record<string, string>;
   icon?: string;
 };
 
