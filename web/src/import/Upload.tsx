@@ -52,6 +52,15 @@ export function UploadStep() {
         nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
         return;
       }
+      if (importSource === "apiDataset" && kbKind === "yuque") {
+        const meta = sources[0]?.connectorMeta;
+        if (!meta?.repoId) throw new Error("缺少语雀知识库信息，请返回第一步重新选择");
+        const result = await api.importYuqueDocs(kbId, { repoId: meta.repoId, docIds: sources.map((item) => item.id), process, parentId });
+        await refreshKnowledgeBases();
+        toast({ title: `已开始导入 ${result.imported} 篇语雀文档`, status: "success" });
+        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
+        return;
+      }
       if (importSource === "apiDataset" && kbKind === "feishu") {
         const wiki = sources[0]?.connectorMeta;
         if (wiki?.source === "feishu-wiki" && wiki.spaceId) {

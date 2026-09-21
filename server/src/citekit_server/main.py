@@ -8,6 +8,7 @@ from citekit_server import __version__
 from citekit_server.agent.api import router as agent_router
 from citekit_server.catalog.api import router as catalog_router
 from citekit_server.connectors.feishu import router as feishu_router
+from citekit_server.connectors.yuque import router as yuque_router
 from citekit_server.calls.api import router as calls_router
 from citekit_server.config import settings
 from citekit_server.db import SessionLocal, UploadedFileRow, apply_migrations
@@ -50,6 +51,7 @@ app.add_middleware(
 )
 app.include_router(catalog_router)
 app.include_router(feishu_router)
+app.include_router(yuque_router)
 app.include_router(kb_router)
 app.include_router(website_import_router)
 app.include_router(tools_router)

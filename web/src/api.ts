@@ -176,6 +176,10 @@ export const api = {
   previewFeishuFile: (kbId: string, folderToken: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/preview?folderToken=${encodeURIComponent(folderToken)}&token=${encodeURIComponent(token)}`),
   importFeishuFiles: (kbId: string, body: { folderToken: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) =>
     request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/import`, { method: "POST", body: JSON.stringify(body) }),
+  listYuqueRepos: (kbId: string) => request<{ id: string; name: string; namespace: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/repos`),
+  listYuqueDocs: (kbId: string, repoId: string) => request<{ id: string; title: string; slug: string; url: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/docs?repoId=${encodeURIComponent(repoId)}`),
+  previewYuqueDoc: (kbId: string, repoId: string, docId: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/preview?repoId=${encodeURIComponent(repoId)}&docId=${encodeURIComponent(docId)}`),
+  importYuqueDocs: (kbId: string, body: { repoId: string; docIds: string[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/import`, { method: "POST", body: JSON.stringify(body) }),
   listSources: (kbId: string) => request<Source[]>(`/api/kbs/${encodeURIComponent(kbId)}/sources`),
   createSource: (
     kbId: string,

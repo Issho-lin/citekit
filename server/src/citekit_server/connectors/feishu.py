@@ -134,6 +134,18 @@ def _locator(file: dict[str, Any]) -> str:
     return ""
 
 
+def _markdown_content(document_token: str, access_token: str) -> str:
+    data = _get(
+        "/docs/v1/content",
+        access_token,
+        doc_token=document_token,
+        doc_type="docx",
+        content_type="markdown",
+        lang="zh",
+    )
+    return str(data.get("content") or "")
+
+
 @router.get("/folders", response_model=list[FeishuFolderOut])
 def list_folders(kb_id: str, db: Session = Depends(get_db)) -> list[FeishuFolderOut]:
     _kb(db, kb_id)
@@ -219,16 +231,14 @@ def preview_file(kb_id: str, folderToken: str = Query(min_length=1, max_length=2
     item = next((item for item in _files(folderToken.strip(), access_token) if str(item.get("token")) == token and str(item.get("type")) in _SUPPORTED), None)
     if not item:
         raise HTTPException(404, "飞书文档不存在或不在该目录中")
-    data = _get(f"/docx/v1/documents/{token}/raw_content", access_token)
-    return {"name": str(item.get("name") or "飞书文档"), "text": str(data.get("content") or "")}
+    return {"name": str(item.get("name") or "飞书文档"), "text": _markdown_content(token, access_token)}
 
 
 @router.get("/wiki/preview")
 def preview_wiki_node(kb_id: str, token: str = Query(min_length=1, max_length=200), db: Session = Depends(get_db)) -> dict[str, str]:
     kb = _kb(db, kb_id)
     access_token = _tenant_token(kb)
-    data = _get(f"/docx/v1/documents/{token}/raw_content", access_token)
-    return {"name": "飞书 Wiki 文档", "text": str(data.get("content") or "")}
+    return {"name": "飞书 Wiki 文档", "text": _markdown_content(token, access_token)}
 
 
 @router.post("/wiki/import", response_model=FeishuImportOut)
@@ -255,11 +265,10 @@ def import_wiki_files(kb_id: str, body: FeishuWikiImportIn, background: Backgrou
     imported = 0
     for document_id in dict.fromkeys(body.tokens):
         node = nodes.get(document_id)
-        if not node or str(node.get("obj_type") or "") not in {"docx", "doc"} or not node.get("obj_token"):
+        if not node or str(node.get("obj_type") or "") != "docx" or not node.get("obj_token"):
             continue
         obj_token = str(node["obj_token"])
-        data = _get(f"/docx/v1/documents/{obj_token}/raw_content", access_token)
-        text = str(data.get("content") or "").strip()
+        text = _markdown_content(obj_token, access_token).strip()
         if not text:
             continue
         locator = f"https://feishu.cn/wiki/{document_id}"
@@ -294,8 +303,7 @@ def import_files(kb_id: str, body: FeishuImportIn, background: BackgroundTasks, 
         item = available.get(document_id)
         if not item:
             continue
-        data = _get(f"/docx/v1/documents/{document_id}/raw_content", token)
-        text = str(data.get("content") or "").strip()
+        text = _markdown_content(document_id, token).strip()
         if not text:
             continue
         existing = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "feishu", SourceRow.locator == _locator(item)).one_or_none()

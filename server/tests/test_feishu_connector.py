@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 
-from citekit_server.connectors.feishu import _files, _tenant_token
+from citekit_server.connectors.feishu import _files, _markdown_content, _tenant_token
 
 
 class FeishuConnectorTest(unittest.TestCase):
@@ -27,3 +27,14 @@ class FeishuConnectorTest(unittest.TestCase):
                 _tenant_token(kb)
         self.assertEqual(caught.exception.status_code, 400)
         self.assertEqual(caught.exception.detail, "invalid app")
+    def test_markdown_content_uses_docs_export_endpoint(self):
+        with patch("citekit_server.connectors.feishu._get", return_value={"content": "# 标题"}) as get:
+            self.assertEqual(_markdown_content("docx_token", "tenant"), "# 标题")
+        get.assert_called_once_with(
+            "/docs/v1/content",
+            "tenant",
+            doc_token="docx_token",
+            doc_type="docx",
+            content_type="markdown",
+            lang="zh",
+        )
