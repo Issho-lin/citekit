@@ -18,6 +18,7 @@ import {
 } from "@chakra-ui/react";
 import { ColorIcon, EmptyKbArt, kbIcon } from "../components/ColorIcon";
 import { CreateKbMenu } from "../components/CreateKbMenu";
+import { ModelLineIcon } from "../components/model/shared";
 import { IconMore, IconSearch } from "../components/icons";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useStore } from "../mock/store";
@@ -158,7 +159,7 @@ export function KnowledgeBasesPage() {
                 </p>
                 {kb.kind !== "folder" && (
                   <div className="ds-card-tags">
-                    <span className="tag">{kb.vectorModel}</span>
+                    <span className="tag"><ModelLineIcon modelId={kb.vectorModel} size={14} />{kb.vectorModel}</span>
                   </div>
                 )}
               </div>

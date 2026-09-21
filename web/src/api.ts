@@ -176,6 +176,10 @@ export const api = {
   previewFeishuFile: (kbId: string, folderToken: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/preview?folderToken=${encodeURIComponent(folderToken)}&token=${encodeURIComponent(token)}`),
   importFeishuFiles: (kbId: string, body: { folderToken: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) =>
     request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/import`, { method: "POST", body: JSON.stringify(body) }),
+  listDingtalkWorkspaces: (kbId: string) => request<{ id: string; name: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/workspaces`),
+  listDingtalkNodes: (kbId: string, workspaceId: string) => request<{ id: string; name: string; url: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/nodes?workspaceId=${encodeURIComponent(workspaceId)}`),
+  previewDingtalkNode: (kbId: string, nodeId: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/preview?nodeId=${encodeURIComponent(nodeId)}`),
+  importDingtalkNodes: (kbId: string, body: { workspaceId: string; nodeIds: string[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/import`, { method: "POST", body: JSON.stringify(body) }),
   listYuqueRepos: (kbId: string) => request<{ id: string; name: string; namespace: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/repos`),
   listYuqueDocs: (kbId: string, repoId: string) => request<{ id: string; title: string; slug: string; url: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/docs?repoId=${encodeURIComponent(repoId)}`),
   previewYuqueDoc: (kbId: string, repoId: string, docId: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/preview?repoId=${encodeURIComponent(repoId)}&docId=${encodeURIComponent(docId)}`),

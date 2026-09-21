@@ -509,6 +509,7 @@ body {
   color: var(--app-text-muted);
   font-size: 12px;
   line-height: 22px;
+  gap: 5px;
 }
 
 .tag-ok {

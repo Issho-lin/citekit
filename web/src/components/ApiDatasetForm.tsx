@@ -121,22 +121,6 @@ export function ApiDatasetForm({
               onChange={(e) => onChange({ ...value, yuqueServer: { ...yuque, token: e.target.value } })}
             />
           </Flex>
-          <Flex {...rowProps}>
-            <Box {...labelProps}>Base URL</Box>
-            <Flex w={controlW} alignItems="center">
-              <Box flex={1} fontSize="sm">
-                {pathLabel}
-              </Box>
-              <Button
-                ml={2}
-                variant="whiteBase"
-                isDisabled={!yuque.userId || !yuque.token}
-                onClick={() => setDirOpen(true)}
-              >
-                选择
-              </Button>
-            </Flex>
-          </Flex>
         </>
       )}
       {kind === "dingtalk" && (
@@ -167,18 +151,20 @@ export function ApiDatasetForm({
               onChange={(e) => onChange({ ...value, dingtalkServer: { ...dingtalk, appSecret: e.target.value } })}
             />
           </Flex>
-          <Flex {...rowProps}>
-            <Box {...labelProps}>
+          <Flex {...rowProps} alignItems="flex-start">
+            <Box {...labelProps} pt={2}>
               User ID <Box as="span" color="red.500">*</Box>
             </Box>
-            <Input
-              w={controlW}
-              bg="myGray.50"
-              placeholder="User ID"
-              maxLength={200}
-              value={dingtalk.userId}
-              onChange={(e) => onChange({ ...value, dingtalkServer: { ...dingtalk, userId: e.target.value } })}
-            />
+            <Box w={controlW}>
+              <Input
+                bg="myGray.50"
+                placeholder="钉钉管理后台成员详情中的 User ID"
+                maxLength={200}
+                value={dingtalk.userId}
+                onChange={(e) => onChange({ ...value, dingtalkServer: { ...dingtalk, userId: e.target.value } })}
+              />
+              <Box mt={1} fontSize="xs" color="myGray.500">钉钉管理后台 → 通讯录 → 成员管理 → 成员详情。不是手机号、姓名、钉钉号或 Union ID。</Box>
+            </Box>
           </Flex>
         </>
       )}

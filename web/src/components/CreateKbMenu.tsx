@@ -30,12 +30,6 @@ const PRIMARY: Item[] = [
 
 const THIRD: Item[] = [
   {
-    kind: "api",
-    icon: "api",
-    title: "API 文件库",
-    desc: "可以通过 API，使用外部文件库构建知识库",
-  },
-  {
     kind: "feishu",
     icon: "feishu",
     title: "飞书知识库",
@@ -92,7 +86,7 @@ export function CreateKbMenu({ parentId }: { parentId?: string }) {
               <ColorIcon name="third" size={32} />
               <span>
                 <strong>第三方知识库</strong>
-                <em>自定义API、飞书、语雀、钉钉等外部文档作为知识库</em>
+                <em>飞书、语雀、钉钉等外部文档作为知识库</em>
               </span>
               {sub && (
                 <div className="create-sub">

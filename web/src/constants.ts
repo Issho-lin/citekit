@@ -137,12 +137,6 @@ export const KB_KINDS: { id: KnowledgeBase["kind"]; title: string; desc: string;
     courseUrl: "https://doc.fastgpt.io/docs/introduction/guide/knowledge_base/websync",
   },
   {
-    id: "api",
-    title: "API 文件库",
-    desc: "可以通过 API，使用外部文件库构建知识库",
-    courseUrl: "https://doc.fastgpt.io/docs/introduction/guide/knowledge_base/api_dataset",
-  },
-  {
     id: "feishu",
     title: "飞书知识库",
     desc: "可通过配置飞书文档权限，使用飞书文档构建知识库，文档不会进行二次存储",

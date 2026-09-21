@@ -61,6 +61,15 @@ export function UploadStep() {
         nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
         return;
       }
+      if (importSource === "apiDataset" && kbKind === "dingtalk") {
+        const meta = sources[0]?.connectorMeta;
+        if (!meta?.workspaceId) throw new Error("缺少钉钉知识库信息，请返回第一步重新选择");
+        const result = await api.importDingtalkNodes(kbId, { workspaceId: meta.workspaceId, nodeIds: sources.map((item) => item.id), process, parentId });
+        await refreshKnowledgeBases();
+        toast({ title: `已开始导入 ${result.imported} 篇钉钉文档`, status: "success" });
+        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
+        return;
+      }
       if (importSource === "apiDataset" && kbKind === "feishu") {
         const wiki = sources[0]?.connectorMeta;
         if (wiki?.source === "feishu-wiki" && wiki.spaceId) {

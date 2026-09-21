@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from citekit_server import __version__
 from citekit_server.agent.api import router as agent_router
 from citekit_server.catalog.api import router as catalog_router
+from citekit_server.connectors.dingtalk import router as dingtalk_router
 from citekit_server.connectors.feishu import router as feishu_router
 from citekit_server.connectors.yuque import router as yuque_router
 from citekit_server.calls.api import router as calls_router
@@ -51,6 +52,7 @@ app.add_middleware(
 )
 app.include_router(catalog_router)
 app.include_router(feishu_router)
+app.include_router(dingtalk_router)
 app.include_router(yuque_router)
 app.include_router(kb_router)
 app.include_router(website_import_router)
