@@ -139,9 +139,6 @@ def run_process(
     parents = split_parents(body, cfg, llm_max_context=llm_max_context, ai_parts=ai_parts)
     chunk_lengths = [len(part) for part in parents]
     chunk_total = len(parents)
-    if preview and chunk_total > 50:
-        notes.append(f"共 {chunk_total} 个分块，预览只展示前 50 个。")
-        parents = parents[:50]
 
     units: list[Unit] = []
     if cfg.trainingType == "qa" or cfg.qaEnhance:
@@ -163,6 +160,7 @@ def run_process(
         chunk_total=chunk_total,
         chunk_lengths=chunk_lengths,
     )
+
 
 
 def embed_items(

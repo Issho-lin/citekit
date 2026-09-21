@@ -58,6 +58,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface ConnectorImportDocument {
+  id: string;
+  title: string;
+  text: string;
+  locator?: string;
+}
+
+
+
 export const api = {
   listModels: () => request<AiModel[]>("/api/models"),
   discoverModels: async (body: { baseUrl: string; apiKey?: string; modelId?: string; providerId?: string }) => {
@@ -171,19 +180,19 @@ export const api = {
   listFeishuSpaces: (kbId: string) => request<{ id: string; name: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/spaces`),
   listFeishuWikiNodes: (kbId: string, spaceId: string, parentToken = "") => request<{ token: string; title: string; type: string; objToken: string; hasChild: boolean; parentToken: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/nodes?spaceId=${encodeURIComponent(spaceId)}&parentToken=${encodeURIComponent(parentToken)}`),
   previewFeishuWikiNode: (kbId: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/preview?token=${encodeURIComponent(token)}`),
-  importFeishuWikiFiles: (kbId: string, body: { spaceId: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/import`, { method: "POST", body: JSON.stringify(body) }),
+  importFeishuWikiFiles: (kbId: string, body: { spaceId: string; tokens: string[]; documents?: ConnectorImportDocument[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/wiki/import`, { method: "POST", body: JSON.stringify(body) }),
   listFeishuFiles: (kbId: string, folderToken: string) => request<{ token: string; name: string; type: string; url: string; parentToken: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/files?folderToken=${encodeURIComponent(folderToken)}`),
   previewFeishuFile: (kbId: string, folderToken: string, token: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/preview?folderToken=${encodeURIComponent(folderToken)}&token=${encodeURIComponent(token)}`),
-  importFeishuFiles: (kbId: string, body: { folderToken: string; tokens: string[]; process?: ProcessConfig; parentId?: string }) =>
+  importFeishuFiles: (kbId: string, body: { folderToken: string; tokens: string[]; documents?: ConnectorImportDocument[]; process?: ProcessConfig; parentId?: string }) =>
     request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/feishu/import`, { method: "POST", body: JSON.stringify(body) }),
   listDingtalkWorkspaces: (kbId: string) => request<{ id: string; name: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/workspaces`),
   listDingtalkNodes: (kbId: string, workspaceId: string) => request<{ id: string; name: string; url: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/nodes?workspaceId=${encodeURIComponent(workspaceId)}`),
   previewDingtalkNode: (kbId: string, nodeId: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/preview?nodeId=${encodeURIComponent(nodeId)}`),
-  importDingtalkNodes: (kbId: string, body: { workspaceId: string; nodeIds: string[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/import`, { method: "POST", body: JSON.stringify(body) }),
+  importDingtalkNodes: (kbId: string, body: { workspaceId: string; nodeIds: string[]; documents?: ConnectorImportDocument[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/dingtalk/import`, { method: "POST", body: JSON.stringify(body) }),
   listYuqueRepos: (kbId: string) => request<{ id: string; name: string; namespace: string; description: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/repos`),
   listYuqueDocs: (kbId: string, repoId: string) => request<{ id: string; title: string; slug: string; url: string }[]>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/docs?repoId=${encodeURIComponent(repoId)}`),
   previewYuqueDoc: (kbId: string, repoId: string, docId: string) => request<{ name: string; text: string }>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/preview?repoId=${encodeURIComponent(repoId)}&docId=${encodeURIComponent(docId)}`),
-  importYuqueDocs: (kbId: string, body: { repoId: string; docIds: string[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/import`, { method: "POST", body: JSON.stringify(body) }),
+  importYuqueDocs: (kbId: string, body: { repoId: string; docIds: string[]; documents?: ConnectorImportDocument[]; process?: ProcessConfig; parentId?: string }) => request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/yuque/import`, { method: "POST", body: JSON.stringify(body) }),
   listSources: (kbId: string) => request<Source[]>(`/api/kbs/${encodeURIComponent(kbId)}/sources`),
   createSource: (
     kbId: string,

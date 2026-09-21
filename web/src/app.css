@@ -4788,33 +4788,33 @@ body.chakra-ui-dark {
 }
 
 
-.feishu-import-panel {
+.connector-import-panel {
   border: 1px solid var(--ck-border, #e7eaf0);
   border-radius: 8px;
   background: var(--ck-surface, #fff);
   overflow: hidden;
 }
-.feishu-import-heading { padding: 20px 22px 16px; border-bottom: 1px solid var(--ck-border, #e7eaf0); }
-.feishu-import-title { color: var(--ck-text, #202735); font-size: 15px; font-weight: 600; line-height: 22px; }
-.feishu-import-desc { margin-top: 4px; color: var(--ck-muted, #778196); font-size: 13px; line-height: 20px; }
-.feishu-import-count { flex: none; margin-left: 16px; padding: 3px 8px; border-radius: 4px; background: var(--ck-soft, #f4f6f9); color: var(--ck-muted, #778196); font-size: 12px; line-height: 18px; }
-.feishu-file-list { max-height: min(46vh, 420px); overflow-y: auto; padding: 6px 10px; }
-.feishu-file-row { display: flex !important; align-items: center; min-height: 46px; margin: 0 !important; padding: 0 10px; border-radius: 5px; color: var(--ck-text, #202735); }
-.feishu-file-row:hover { background: var(--ck-soft, #f6f8fb); }
-.feishu-file-row .chakra-checkbox__control { flex: none; }
-.feishu-file-row .chakra-checkbox__label { display: flex; min-width: 0; flex: 1; align-items: center; margin-left: 10px; }
-.feishu-file-name { overflow: hidden; flex: 1; color: inherit; font-size: 13px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
-.feishu-file-kind { flex: none; margin-left: 16px; color: var(--ck-muted, #8992a3); font-size: 12px; }
-.feishu-import-empty { margin: 16px 22px; padding: 24px; border: 1px dashed var(--ck-border, #dce1e9); border-radius: 6px; color: var(--ck-muted, #778196); font-size: 13px; text-align: center; }
-.feishu-import-footer { min-height: 68px; gap: 16px; padding: 14px 22px; border-top: 1px solid var(--ck-border, #e7eaf0); background: var(--ck-soft, #fafbfc); }
+.connector-import-heading { padding: 20px 22px 16px; border-bottom: 1px solid var(--ck-border, #e7eaf0); }
+.connector-import-title { color: var(--ck-text, #202735); font-size: 15px; font-weight: 600; line-height: 22px; }
+.connector-import-desc { margin-top: 4px; color: var(--ck-muted, #778196); font-size: 13px; line-height: 20px; }
+.connector-import-count { flex: none; margin-left: 16px; padding: 3px 8px; border-radius: 4px; background: var(--ck-soft, #f4f6f9); color: var(--ck-muted, #778196); font-size: 12px; line-height: 18px; }
+.connector-file-list { max-height: min(46vh, 420px); overflow-y: auto; padding: 6px 10px; }
+.connector-file-row { display: flex !important; align-items: center; min-height: 46px; margin: 0 !important; padding: 0 10px; border-radius: 5px; color: var(--ck-text, #202735); }
+.connector-file-row:hover { background: var(--ck-soft, #f6f8fb); }
+.connector-file-row .chakra-checkbox__control { flex: none; }
+.connector-file-row .chakra-checkbox__label { display: flex; min-width: 0; flex: 1; align-items: center; margin-left: 10px; }
+.connector-file-name { overflow: hidden; flex: 1; color: inherit; font-size: 13px; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.connector-file-kind { flex: none; margin-left: 16px; color: var(--ck-muted, #8992a3); font-size: 12px; }
+.connector-import-empty { margin: 16px 22px; padding: 24px; border: 1px dashed var(--ck-border, #dce1e9); border-radius: 6px; color: var(--ck-muted, #778196); font-size: 13px; text-align: center; }
+.connector-import-footer { min-height: 68px; gap: 16px; padding: 14px 22px; border-top: 1px solid var(--ck-border, #e7eaf0); background: var(--ck-soft, #fafbfc); }
 @media (max-width: 600px) {
-  .feishu-import-heading, .feishu-import-footer { padding-right: 14px; padding-left: 14px; }
-  .feishu-import-footer { align-items: flex-end; flex-direction: column; }
-  .feishu-file-kind { display: none; }
+  .connector-import-heading, .connector-import-footer { padding-right: 14px; padding-left: 14px; }
+  .connector-import-footer { align-items: flex-end; flex-direction: column; }
+  .connector-file-kind { display: none; }
 }
-.feishu-folder-input { padding: 14px 22px; border-bottom: 1px solid var(--ck-border, #e7eaf0); background: var(--ck-soft, #fafbfc); }
-.feishu-folder-input .chakra-input { background: var(--ck-surface, #fff); }
-@media (max-width: 600px) { .feishu-folder-input { padding: 12px 14px; } }
+.connector-import-input { padding: 14px 22px; border-bottom: 1px solid var(--ck-border, #e7eaf0); background: var(--ck-soft, #fafbfc); }
+.connector-import-input .chakra-input { background: var(--ck-surface, #fff); }
+@media (max-width: 600px) { .connector-import-input { padding: 12px 14px; } }
 
 
 
@@ -4823,3 +4823,11 @@ body.chakra-ui-dark {
 .data-retrain-tip-title { color: #475467; font-size: 12px; font-weight: 600; line-height: 18px; }
 .data-retrain-tip-text { margin-top: 1px; color: #667085; font-size: 12px; line-height: 18px; }
 @media (max-width: 600px) { .data-retrain-tip { margin-right: 16px; margin-left: 16px; } }
+
+
+/* Website page discovery */
+.website-discover { overflow: hidden; border: 1px solid #e3e7ee; border-radius: 12px; background: #fff; box-shadow: 0 8px 26px rgba(24, 39, 75, .045); }
+.website-discover-hero { padding: 20px 22px 16px; border-bottom: 1px solid #e9edf3; }.website-discover-title { color: #344054; font-size: 15px; font-weight: 600; line-height: 22px; }.website-discover-desc { margin-top: 4px; color: #778196; font-size: 13px; line-height: 20px; }
+.website-discover-form { padding: 20px 28px; border-bottom: 1px solid #e9edf3; }.website-field-label { margin: 0 0 7px; color: #475467; font-size: 12px; font-weight: 600; }.website-field-label span { color: #e05656; }.website-field-label em { margin-left: 3px; color: #98a2b3; font-size: 11px; font-style: normal; font-weight: 400; }.website-field .chakra-input { height: 38px; border-color: #dce2ec; background: #fbfcfe; font-size: 13px; }.website-field .chakra-input:focus { border-color: #79a3ff; background: #fff; box-shadow: 0 0 0 3px rgba(51,112,255,.1); }.website-field-grid { margin-top: 15px; }.website-field-grid > .website-field { flex: 1; min-width: 0; }.website-discover-form-footer { margin-top: 16px; color: #8a94a6; font-size: 12px; }.website-discover-form-footer .chakra-button { min-width: 88px; }
+.website-discover-loading, .website-discover-empty { min-height: 150px; gap: 10px; color: #7b8799; font-size: 13px; }.website-discover-empty { display: flex; align-items: center; justify-content: center; margin: 18px 28px; border: 1px dashed #dce2ec; border-radius: 8px; background: #fcfdff; }.website-discover-results { margin: 20px 28px; overflow: hidden; border: 1px solid #e5e9f0; border-radius: 9px; }.website-discover-results-head { min-height: 56px; padding: 10px 14px 10px 16px; border-bottom: 1px solid #e9edf3; background: #fafbfc; color: #344054; font-size: 13px; }.website-page-list { max-height: 265px; overflow-y: auto; }.website-page-row { display: block; margin: 0 !important; padding: 12px 16px !important; border-bottom: 1px solid #edf0f4; transition: background .15s ease; }.website-page-row:last-child { border-bottom: 0; }.website-page-row:hover { background: #f7faff; }.website-page-row .chakra-checkbox__label { display: block; width: calc(100% - 24px); margin-left: 10px; }.website-page-title { overflow: hidden; color: #344054; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }.website-page-meta { display: flex; justify-content: space-between; gap: 12px; margin-top: 4px; color: #98a2b3; font-size: 11px; }.website-page-meta > :first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.website-page-meta > :last-child { flex: none; }.website-discover-footer { min-height: 70px; padding: 14px 28px; border-top: 1px solid #e9edf3; background: #fafbfc; color: #667085; font-size: 12px; }
+@media (max-width: 650px) { .website-discover-hero, .website-discover-form, .website-discover-footer { padding-right: 16px; padding-left: 16px; }.website-field-grid { flex-direction: column; }.website-discover-results { margin-right: 16px; margin-left: 16px; }.website-discover-footer { align-items: flex-end; flex-direction: column; }.website-discover-form-footer > :first-child { display: none; } }

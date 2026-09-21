@@ -35,6 +35,7 @@ def process_of(source: SourceRow) -> ProcessConfigIn:
     return ProcessConfigIn.model_validate(data or {})
 
 
+
 def resolve_auth(db: Session, model: AiModelRow) -> str:
     token = (model.request_auth or "").strip()
     if token:
@@ -223,14 +224,8 @@ def ingest_source(source_id: str, attempt: int = 0) -> None:
         with as_local_path(stored, filename) as path:
             with call_scope(purpose="ingest", kb_id=kb.id, source_id=source.id):
                 result = run_process(
-                    cfg=cfg,
-                    title=source.title,
-                    filename=filename,
-                    raw_text=raw,
-                    file_path=path,
-                    preview=False,
-                    llm=_pair(db, llm),
-                    vlm=_pair(db, vlm),
+                    cfg=cfg, title=source.title, filename=filename, raw_text=raw, file_path=path,
+                    preview=False, llm=_pair(db, llm), vlm=_pair(db, vlm),
                     llm_max_context=llm.max_context if llm else None,
                 )
         if not result.units:

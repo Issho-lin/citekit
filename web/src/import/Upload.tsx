@@ -26,6 +26,7 @@ export function UploadStep() {
   const { importSource, parentId, sources, setSources, process, kbId, folderToken } = useDatasetImport();
   const kbKind = knowledgeBases.find((k) => k.id === kbId)?.kind;
   const [isLoading, setIsLoading] = useState(false);
+  const connectorDocuments = sources.map((item) => ({ id: item.id, title: item.sourceName, text: item.rawText ?? "", locator: item.link ?? "" }));
 
   const { totalFilesCount, hasCreatingFiles, buttonText } = useMemo(() => {
     const totalFilesCount = sources.length;
@@ -52,35 +53,39 @@ export function UploadStep() {
         nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
         return;
       }
-      if (importSource === "apiDataset" && kbKind === "yuque") {
-        const meta = sources[0]?.connectorMeta;
-        if (!meta?.repoId) throw new Error("缺少语雀知识库信息，请返回第一步重新选择");
-        const result = await api.importYuqueDocs(kbId, { repoId: meta.repoId, docIds: sources.map((item) => item.id), process, parentId });
+      const connectorImports: Partial<Record<NonNullable<typeof kbKind>, () => Promise<{ imported: number; label: string }>>> = {
+        yuque: async () => {
+          const meta = sources[0]?.connectorMeta;
+          if (!meta?.repoId) throw new Error("缺少语雀知识库信息，请返回第一步重新选择");
+          const result = await api.importYuqueDocs(kbId, { repoId: meta.repoId, docIds: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
+          return { imported: result.imported, label: "语雀文档" };
+        },
+        dingtalk: async () => {
+          const meta = sources[0]?.connectorMeta;
+          if (!meta?.workspaceId) throw new Error("缺少钉钉知识库信息，请返回第一步重新选择");
+          const result = await api.importDingtalkNodes(kbId, { workspaceId: meta.workspaceId, nodeIds: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
+          return { imported: result.imported, label: "钉钉文档" };
+        },
+      };
+      const importConnector = importSource === "apiDataset" && kbKind ? connectorImports[kbKind] : undefined;
+      if (importConnector) {
+        const result = await importConnector();
         await refreshKnowledgeBases();
-        toast({ title: `已开始导入 ${result.imported} 篇语雀文档`, status: "success" });
-        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
-        return;
-      }
-      if (importSource === "apiDataset" && kbKind === "dingtalk") {
-        const meta = sources[0]?.connectorMeta;
-        if (!meta?.workspaceId) throw new Error("缺少钉钉知识库信息，请返回第一步重新选择");
-        const result = await api.importDingtalkNodes(kbId, { workspaceId: meta.workspaceId, nodeIds: sources.map((item) => item.id), process, parentId });
-        await refreshKnowledgeBases();
-        toast({ title: `已开始导入 ${result.imported} 篇钉钉文档`, status: "success" });
+        toast({ title: `已开始导入 ${result.imported} 篇${result.label}`, status: "success" });
         nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
         return;
       }
       if (importSource === "apiDataset" && kbKind === "feishu") {
         const wiki = sources[0]?.connectorMeta;
         if (wiki?.source === "feishu-wiki" && wiki.spaceId) {
-          const result = await api.importFeishuWikiFiles(kbId, { spaceId: wiki.spaceId, tokens: sources.map((item) => item.id), process, parentId });
+          const result = await api.importFeishuWikiFiles(kbId, { spaceId: wiki.spaceId, tokens: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
           await refreshKnowledgeBases();
           toast({ title: `已开始导入 ${result.imported} 篇飞书 Wiki 文档`, status: "success" });
           nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
           return;
         }
         if (!folderToken) throw new Error("缺少 Folder Token，请返回第一步重新读取目录");
-        const result = await api.importFeishuFiles(kbId, { folderToken, tokens: sources.map((item) => item.id), process, parentId });
+        const result = await api.importFeishuFiles(kbId, { folderToken, tokens: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
         await refreshKnowledgeBases();
         toast({ title: `已开始导入 ${result.imported} 篇飞书文档`, status: "success" });
         nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
@@ -120,14 +125,15 @@ export function UploadStep() {
       toast({ title: "导入成功，请等待训练", status: "success" });
       nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "上传异常";
       setSources((state) =>
         state.map((source) =>
           source.createStatus === "creating"
-            ? { ...source, createStatus: "waiting", errorMsg: "上传异常" }
+            ? { ...source, createStatus: "waiting", errorMsg: message }
             : source,
         ),
       );
-      toast({ title: "上传异常", status: "error" });
+      toast({ title: message, status: "error" });
     } finally {
       setIsLoading(false);
     }

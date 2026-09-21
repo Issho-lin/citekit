@@ -8,9 +8,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from citekit_server.db import KnowledgeBaseRow, SourceRow, get_db
-from citekit_server.ids import new_id
-from citekit_server.kb.ingest import ingest_source, now_stamp
+from citekit_server.connectors.common import ConnectorDocument, PreviewedDocumentIn, connector_config, connector_kb, persist_documents
+from citekit_server.db import KnowledgeBaseRow, get_db
 from citekit_server.schemas import ProcessConfigIn
 
 router = APIRouter(prefix="/api/kbs/{kb_id}/dingtalk", tags=["dingtalk"])
@@ -33,20 +32,17 @@ class DingtalkNodeOut(BaseModel):
 class DingtalkImportIn(BaseModel):
     workspaceId: str = Field(min_length=1, max_length=200)
     nodeIds: list[str] = Field(min_length=1, max_length=100)
+    documents: list[PreviewedDocumentIn] = Field(min_length=1, max_length=100)
     process: ProcessConfigIn | None = None
     parentId: str | None = None
 
 
 def _kb(db: Session, kb_id: str) -> KnowledgeBaseRow:
-    kb = db.get(KnowledgeBaseRow, kb_id)
-    if not kb or kb.kind != "dingtalk":
-        raise HTTPException(404, "钉钉知识库不存在")
-    return kb
+    return connector_kb(db, kb_id, "dingtalk", "钉钉")
 
 
 def _config(kb: KnowledgeBaseRow) -> tuple[str, str, str]:
-    raw = kb.api_dataset_server if isinstance(kb.api_dataset_server, dict) else {}
-    cfg = raw.get("dingtalkServer") if isinstance(raw.get("dingtalkServer"), dict) else {}
+    cfg = connector_config(kb, "dingtalkServer")
     app_key = str(cfg.get("appKey") or "").strip()
     app_secret = str(cfg.get("appSecret") or "").strip()
     operator_id = str(cfg.get("userId") or "").strip()
@@ -207,27 +203,7 @@ def preview_node(kb_id: str, nodeId: str = Query(min_length=1, max_length=200), 
 
 @router.post("/import")
 def import_nodes(kb_id: str, body: DingtalkImportIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, int]:
-    app_key, app_secret, user_id = _config(_kb(db, kb_id))
-    token = _access_token(app_key, app_secret)
-    operator_id = _operator_union_id(user_id, token)
+    _kb(db, kb_id)
     process = (body.process or ProcessConfigIn()).model_dump()
-    source_ids: list[str] = []
-    for node_id in dict.fromkeys(body.nodeIds):
-        title, text, url = _document_content(node_id, operator_id, token)
-        if not text:
-            continue
-        raw_text = f"# {title}\n\n{text}"
-        locator = url or f"https://www.dingtalk.com/wiki/{node_id}"
-        existing = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "dingtalk", SourceRow.locator == locator).one_or_none()
-        if existing:
-            existing.title, existing.raw_text, existing.process, existing.status, existing.error_message, existing.updated_at = title, raw_text, process, "syncing", None, now_stamp()
-            source_id = existing.id
-        else:
-            row = SourceRow(id=new_id("src"), kb_id=kb_id, parent_id=body.parentId, type="dingtalk", title=title, locator=locator, acl="internal", status="syncing", process=process, raw_text=raw_text, updated_at=now_stamp(), chunk_count=0)
-            db.add(row)
-            source_id = row.id
-        source_ids.append(source_id)
-    db.commit()
-    for source_id in source_ids:
-        background.add_task(ingest_source, source_id)
-    return {"imported": len(source_ids)}
+    documents = [document.to_document() for document in body.documents]
+    return {"imported": persist_documents(db, background, kb_id=kb_id, source_type="dingtalk", documents=documents, process=process, parent_id=body.parentId)}

@@ -8,9 +8,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from citekit_server.db import FeishuFolderRow, KnowledgeBaseRow, SourceRow, get_db
+from citekit_server.connectors.common import ConnectorDocument, PreviewedDocumentIn, connector_config, connector_kb, persist_documents
+from citekit_server.db import FeishuFolderRow, KnowledgeBaseRow, get_db
 from citekit_server.ids import new_id
-from citekit_server.kb.ingest import ingest_source, now_stamp
+from citekit_server.kb.ingest import now_stamp
 from citekit_server.schemas import ProcessConfigIn
 
 router = APIRouter(prefix="/api/kbs/{kb_id}/feishu", tags=["feishu"])
@@ -44,6 +45,7 @@ class FeishuWikiNodeOut(BaseModel):
 class FeishuImportIn(BaseModel):
     folderToken: str = Field(min_length=1, max_length=200)
     tokens: list[str] = Field(min_length=1, max_length=100)
+    documents: list[PreviewedDocumentIn] = Field(min_length=1, max_length=100)
     process: ProcessConfigIn | None = None
     parentId: str | None = None
 
@@ -55,6 +57,7 @@ class FeishuImportOut(BaseModel):
 class FeishuWikiImportIn(BaseModel):
     spaceId: str = Field(min_length=1, max_length=100)
     tokens: list[str] = Field(min_length=1, max_length=100)
+    documents: list[PreviewedDocumentIn] = Field(min_length=1, max_length=100)
     process: ProcessConfigIn | None = None
     parentId: str | None = None
 
@@ -72,15 +75,11 @@ class FeishuFolderIn(BaseModel):
 
 
 def _kb(db: Session, kb_id: str) -> KnowledgeBaseRow:
-    row = db.get(KnowledgeBaseRow, kb_id)
-    if not row or row.kind != "feishu":
-        raise HTTPException(404, "飞书知识库不存在")
-    return row
+    return connector_kb(db, kb_id, "feishu", "飞书")
 
 
 def _config(kb: KnowledgeBaseRow) -> tuple[str, str]:
-    raw = kb.api_dataset_server if isinstance(kb.api_dataset_server, dict) else {}
-    cfg = raw.get("feishuServer") if isinstance(raw.get("feishuServer"), dict) else {}
+    cfg = connector_config(kb, "feishuServer")
     app_id = str(cfg.get("appId") or "").strip()
     app_secret = str(cfg.get("appSecret") or "").strip()
     if not app_id or not app_secret:
@@ -243,82 +242,16 @@ def preview_wiki_node(kb_id: str, token: str = Query(min_length=1, max_length=20
 
 @router.post("/wiki/import", response_model=FeishuImportOut)
 def import_wiki_files(kb_id: str, body: FeishuWikiImportIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> FeishuImportOut:
-    kb = _kb(db, kb_id)
-    access_token = _tenant_token(kb)
-    nodes: dict[str, dict[str, Any]] = {}
-    pending = [""]
-    visited: set[str] = set()
-    while pending and len(nodes) < 500:
-        parent = pending.pop()
-        if parent in visited:
-            continue
-        visited.add(parent)
-        for item in _wiki_nodes(body.spaceId.strip(), parent, access_token):
-            node_token = str(item.get("node_token") or "")
-            if not node_token:
-                continue
-            nodes[node_token] = item
-            if item.get("has_child"):
-                pending.append(node_token)
+    _kb(db, kb_id)
     process = (body.process or ProcessConfigIn()).model_dump()
-    source_ids: list[str] = []
-    imported = 0
-    for document_id in dict.fromkeys(body.tokens):
-        node = nodes.get(document_id)
-        if not node or str(node.get("obj_type") or "") != "docx" or not node.get("obj_token"):
-            continue
-        obj_token = str(node["obj_token"])
-        text = _markdown_content(obj_token, access_token).strip()
-        if not text:
-            continue
-        locator = f"https://feishu.cn/wiki/{document_id}"
-        existing = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "feishu", SourceRow.locator == locator).one_or_none()
-        if existing:
-            existing.title, existing.raw_text, existing.process, existing.status, existing.error_message, existing.updated_at = str(node.get("title") or "飞书 Wiki 文档"), text, process, "syncing", None, now_stamp()
-            source_id = existing.id
-        else:
-            row = SourceRow(id=new_id("src"), kb_id=kb_id, parent_id=body.parentId, type="feishu", title=str(node.get("title") or "飞书 Wiki 文档"), locator=locator, acl="internal", status="syncing", process=process, raw_text=text, updated_at=now_stamp(), chunk_count=0)
-            db.add(row)
-            source_id = row.id
-        source_ids.append(source_id)
-        imported += 1
-    db.commit()
-    for source_id in source_ids:
-        background.add_task(ingest_source, source_id)
-    return FeishuImportOut(imported=imported)
-
+    documents = [document.to_document() for document in body.documents]
+    return FeishuImportOut(imported=persist_documents(db, background, kb_id=kb_id, source_type="feishu", documents=documents, process=process, parent_id=body.parentId))
 
 @router.post("/import", response_model=FeishuImportOut)
 def import_files(kb_id: str, body: FeishuImportIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> FeishuImportOut:
-    kb = _kb(db, kb_id)
-    token = _tenant_token(kb)
-    folder_token = body.folderToken.strip()
-    if not folder_token:
+    _kb(db, kb_id)
+    if not body.folderToken.strip():
         raise HTTPException(400, "请填写 Folder Token")
-    available = {str(item.get("token")): item for item in _files(folder_token, token) if str(item.get("type") or "") in _SUPPORTED}
     process = (body.process or ProcessConfigIn()).model_dump()
-    imported = 0
-    source_ids: list[str] = []
-    for document_id in dict.fromkeys(body.tokens):
-        item = available.get(document_id)
-        if not item:
-            continue
-        text = _markdown_content(document_id, token).strip()
-        if not text:
-            continue
-        existing = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "feishu", SourceRow.locator == _locator(item)).one_or_none()
-        if existing:
-            existing.title, existing.raw_text, existing.process, existing.status, existing.error_message, existing.updated_at = str(item.get("name") or existing.title), text, process, "syncing", None, now_stamp()
-            source_id = existing.id
-        else:
-            row = SourceRow(id=new_id("src"), kb_id=kb_id, parent_id=body.parentId, type="feishu", title=str(item.get("name") or "飞书文档"), locator=_locator(item), acl="internal", status="syncing", process=process, raw_text=text, updated_at=now_stamp(), chunk_count=0)
-            db.add(row)
-            source_id = row.id
-        source_ids.append(source_id)
-        imported += 1
-    db.commit()
-    # Parsing, embedding and indexing can make a request last minutes. Persist all
-    # Sources first and let the existing ingest worker finish them asynchronously.
-    for source_id in source_ids:
-        background.add_task(ingest_source, source_id)
-    return FeishuImportOut(imported=imported)
+    documents = [document.to_document() for document in body.documents]
+    return FeishuImportOut(imported=persist_documents(db, background, kb_id=kb_id, source_type="feishu", documents=documents, process=process, parent_id=body.parentId))

@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@chakra-ui/react";
 import { IconPlus } from "../components/icons";
 import { evalStatus } from "../evalStatus";
-import { ColorIcon } from "../components/ColorIcon";
+import { ColorIcon, kbIcon } from "../components/ColorIcon";
 import { DataTable, Empty, PageHero } from "../components/chrome";
 import { useStore } from "../mock/store";
 
@@ -50,7 +50,12 @@ export function ToolsPage() {
                       </div>
                     </div>
                   </td>
-                  <td>{knowledgeBases.find((k) => k.id === t.kbId)?.name}</td>
+                  <td>
+                    {(() => {
+                      const kb = knowledgeBases.find((item) => item.id === t.kbId);
+                      return kb ? <div className="name-cell"><ColorIcon name={kbIcon(kb.kind)} size={28} /><Link to={`/kb/${kb.id}`}>{kb.name}</Link></div> : "未找到知识库";
+                    })()}
+                  </td>
                   <td>{scope}</td>
                   <td>{evalStatus(t.eval)}</td>
                   <td>{n === 0 ? "未发布" : `${n} 个端点`}</td>

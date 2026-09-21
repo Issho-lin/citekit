@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@chakra-ui/react";
 import { IconPlus } from "../components/icons";
-import { ColorIcon } from "../components/ColorIcon";
+import { ColorIcon, kbIcon } from "../components/ColorIcon";
 import { DataTable, Empty, PageHero, Panel } from "../components/chrome";
 import { kbNext } from "../mock/pipeline";
 import { useStore } from "../mock/store";
@@ -66,8 +66,13 @@ export function WorkbenchPage() {
                 return (
                   <tr key={kb.id}>
                     <td>
-                      <Link to={`/kb/${kb.id}`}>{kb.name}</Link>
-                      <div className="mono">{kb.domain}</div>
+                      <div className="name-cell">
+                        <ColorIcon name={kbIcon(kb.kind)} size={28} />
+                        <div>
+                          <Link to={`/kb/${kb.id}`}>{kb.name}</Link>
+                          <div className="mono">{kb.domain}</div>
+                        </div>
+                      </div>
                     </td>
                     <td className="mono">
                       集合 {src} · 工具 {tl}

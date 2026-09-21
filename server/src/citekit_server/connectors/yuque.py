@@ -7,9 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from citekit_server.db import KnowledgeBaseRow, SourceRow, get_db
-from citekit_server.ids import new_id
-from citekit_server.kb.ingest import ingest_source, now_stamp
+from citekit_server.connectors.common import ConnectorDocument, PreviewedDocumentIn, connector_config, connector_kb, persist_documents
+from citekit_server.db import KnowledgeBaseRow, get_db
 from citekit_server.schemas import ProcessConfigIn
 
 router = APIRouter(prefix="/api/kbs/{kb_id}/yuque", tags=["yuque"])
@@ -33,20 +32,17 @@ class YuqueDocOut(BaseModel):
 class YuqueImportIn(BaseModel):
     repoId: str = Field(min_length=1, max_length=100)
     docIds: list[str] = Field(min_length=1, max_length=100)
+    documents: list[PreviewedDocumentIn] = Field(min_length=1, max_length=100)
     process: ProcessConfigIn | None = None
     parentId: str | None = None
 
 
 def _kb(db: Session, kb_id: str) -> KnowledgeBaseRow:
-    kb = db.get(KnowledgeBaseRow, kb_id)
-    if not kb or kb.kind != "yuque":
-        raise HTTPException(404, "语雀知识库不存在")
-    return kb
+    return connector_kb(db, kb_id, "yuque", "语雀")
 
 
 def _config(kb: KnowledgeBaseRow) -> tuple[str, str]:
-    raw = kb.api_dataset_server if isinstance(kb.api_dataset_server, dict) else {}
-    cfg = raw.get("yuqueServer") if isinstance(raw.get("yuqueServer"), dict) else {}
+    cfg = connector_config(kb, "yuqueServer")
     user_id, token = str(cfg.get("userId") or "").strip(), str(cfg.get("token") or "").strip()
     if not user_id or not token:
         raise HTTPException(400, "请先在知识库中配置语雀 User ID 和 Token")
@@ -108,22 +104,6 @@ def preview_doc(kb_id: str, repoId: str = Query(min_length=1), docId: str = Quer
 def import_docs(kb_id: str, body: YuqueImportIn, background: BackgroundTasks, db: Session = Depends(get_db)) -> dict[str, int]:
     _, token = _config(_kb(db, kb_id))
     process = (body.process or ProcessConfigIn()).model_dump()
-    source_ids: list[str] = []
-    for doc_id in dict.fromkeys(body.docIds):
-        doc = _get(f"/repos/{body.repoId}/docs/{doc_id}", token)
-        if not isinstance(doc, dict) or not str(doc.get("body") or "").strip():
-            continue
-        locator = str(doc.get("url") or f"https://www.yuque.com/{doc.get('slug') or doc_id}")
-        existing = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "yuque", SourceRow.locator == locator).one_or_none()
-        if existing:
-            existing.title, existing.raw_text, existing.process, existing.status, existing.error_message, existing.updated_at = str(doc.get("title") or existing.title), str(doc["body"]), process, "syncing", None, now_stamp()
-            source_id = existing.id
-        else:
-            row = SourceRow(id=new_id("src"), kb_id=kb_id, parent_id=body.parentId, type="yuque", title=str(doc.get("title") or "语雀文档"), locator=locator, acl="internal", status="syncing", process=process, raw_text=str(doc["body"]), updated_at=now_stamp(), chunk_count=0)
-            db.add(row)
-            source_id = row.id
-        source_ids.append(source_id)
-    db.commit()
-    for source_id in source_ids:
-        background.add_task(ingest_source, source_id)
-    return {"imported": len(source_ids)}
+    documents = [document.to_document() for document in body.documents]
+
+    return {"imported": persist_documents(db, background, kb_id=kb_id, source_type="yuque", documents=documents, process=process, parent_id=body.parentId)}
