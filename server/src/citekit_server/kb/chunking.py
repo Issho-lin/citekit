@@ -145,9 +145,10 @@ def split_parents(
     if not body:
         return []
     cfg = process or ProcessConfigIn()
-    # A fenced block is unambiguous Markdown even when the caller only supplied raw text.
-    # Keep this narrow: a bare "#" must not turn arbitrary plain text into Markdown.
-    if _has_fenced_markdown(body):
+    # A fenced block or a GFM table (header + delimiter row) is unambiguous Markdown
+    # even when the caller only supplied raw text. Keep this narrow: a bare "#"
+    # must not turn arbitrary plain text into Markdown.
+    if _has_fenced_markdown(body) or _has_markdown_table(body):
         return split_markdown_parents(body, cfg, llm_max_context=llm_max_context)
     size, overlap = process_size(cfg)
     body = _prepare_text(body)
@@ -183,6 +184,85 @@ class ContentBlock:
 
 def _has_fenced_markdown(text: str) -> bool:
     return any(_FENCE_OPEN.match(line) for line in (text or "").splitlines())
+
+
+_TABLE_DELIM_CELL = re.compile(r"^:?-+:?$")
+_TABLE_PIPE = re.compile(r"(?<!\\)\|")
+
+
+def table_cells(line: str) -> list[str]:
+    """Split one GFM table row into cells, honoring escaped pipes."""
+    row = (line or "").strip()
+    if row.startswith("|"):
+        row = row[1:]
+    if row.endswith("|") and not row.endswith("\\|"):
+        row = row[:-1]
+    return [cell.strip().replace("\\|", "|") for cell in _TABLE_PIPE.split(row)]
+
+
+def _is_table_delimiter(line: str) -> bool:
+    if "-" not in line or (line[:4] == "    "):
+        return False
+    cells = table_cells(line)
+    return bool(cells) and all(_TABLE_DELIM_CELL.match(cell) for cell in cells)
+
+
+def _table_starts(lines: list[str], index: int) -> bool:
+    """GFM: a pipe header row followed by a delimiter row with the same cell count."""
+    if index + 1 >= len(lines):
+        return False
+    header = lines[index]
+    if not _TABLE_PIPE.search(header) or header[:4] == "    ":
+        return False
+    delimiter = lines[index + 1]
+    return _is_table_delimiter(delimiter) and len(table_cells(header)) == len(table_cells(delimiter))
+
+
+def _has_markdown_table(text: str) -> bool:
+    lines = (text or "").splitlines()
+    return any(_table_starts(lines, index) for index in range(len(lines) - 1))
+
+
+def _table_row_groups(table: str, budget: int) -> list[str]:
+    """Split an oversized table between rows, repeating header + delimiter.
+
+    A single row is never cut: an oversized row becomes its own group.
+    """
+    lines = table.split("\n")
+    head, rows = "\n".join(lines[:2]), lines[2:]
+    if budget <= 0 or len(table) <= budget or not rows:
+        return [table]
+    groups: list[str] = []
+    current: list[str] = []
+    length = len(head)
+    for row in rows:
+        if current and length + 1 + len(row) > budget:
+            groups.append("\n".join([head, *current]))
+            current, length = [], len(head)
+        current.append(row)
+        length += 1 + len(row)
+    if current:
+        groups.append("\n".join([head, *current]))
+    return groups
+
+
+def table_row_sentences(table: str) -> list[str]:
+    """Serialize each data row as "header: value" pairs for row-level retrieval."""
+    lines = [line for line in table.split("\n") if line.strip()]
+    if len(lines) < 3:
+        return []
+    header = table_cells(lines[0])
+    sentences: list[str] = []
+    for line in lines[2:]:
+        pairs = []
+        for position, value in enumerate(table_cells(line)):
+            if not value:
+                continue
+            label = header[position] if position < len(header) and header[position] else f"列{position + 1}"
+            pairs.append(f"{label}: {value}")
+        if pairs:
+            sentences.append("；".join(pairs))
+    return sentences
 
 
 def markdown_blocks(text: str) -> list[ContentBlock]:
@@ -231,6 +311,24 @@ def markdown_blocks(text: str) -> list[ContentBlock]:
                 metadata["unclosed_fence"] = True
             blocks.append(ContentBlock(kind, "\n".join(code), atomic=True, heading_path=headings.copy(), source_format="markdown", metadata=metadata))
             continue
+        if _table_starts(lines, index):
+            flush_paragraph()
+            rows = [line, lines[index + 1]]
+            index += 2
+            # A table ends at a blank line, a line without cells, or another block start.
+            while index < len(lines):
+                candidate = lines[index]
+                if not candidate.strip() or not _TABLE_PIPE.search(candidate):
+                    break
+                if _FENCE_OPEN.match(candidate) or _MD_HEADING.match(candidate.strip()):
+                    break
+                rows.append(candidate)
+                index += 1
+            blocks.append(ContentBlock(
+                "table", "\n".join(rows), heading_path=headings.copy(), source_format="markdown",
+                metadata={"columns": len(table_cells(line)), "rows": len(rows) - 2},
+            ))
+            continue
         match = _MD_HEADING.match(line)
         if match:
             flush_paragraph()
@@ -271,33 +369,65 @@ def split_markdown_parents(text: str, process: ProcessConfigIn | None = None, *,
         return _window(body, size or 8000, min(overlap or 200, (size or 8000) // 4))
     size, _overlap = process_size(cfg)
     chunks: list[str] = []
-    buffer: list[str] = []
+    # (text, may_window): table rows must never be cut by a character window.
+    buffer: list[tuple[str, bool]] = []
+    heading = ""
 
-    def flush() -> None:
+    def joined(extra: str | None = None) -> str:
+        items = [text for text, _ in buffer] + ([extra] if extra is not None else [])
+        return "\n\n".join(item for item in items if item.strip()).strip()
+
+    def fits(extra: str) -> bool:
+        return size <= 0 or len(joined(extra)) <= size
+
+    def flush(*, carry_heading: bool = True) -> None:
         nonlocal buffer
-        value = "\n\n".join(item for item in buffer if item.strip()).strip()
+        # A heading at the tail belongs to the content that follows, not to the
+        # chunk being closed; carry it over instead of leaving it dangling.
+        carry: list[tuple[str, bool]] = []
+        while carry_heading and buffer and buffer[-1][0] in headings:
+            carry.insert(0, buffer.pop())
+        value = joined()
         if value:
-            chunks.extend(_window(value, size, 0) if size > 0 and len(value) > size else [value])
-        buffer = []
+            splittable = all(may_window for _, may_window in buffer)
+            chunks.extend(_window(value, size, 0) if splittable and size > 0 and len(value) > size else [value])
+        buffer = carry
 
+    headings: set[str] = set()
     for block in markdown_blocks(body):
         if block.kind == "heading":
             # Preserve headings with subsequent prose, matching the legacy
             # section behavior, but never make a fence part of a text window.
-            if buffer and size > 0 and len("\n\n".join(buffer + [block.text])) > size:
+            if buffer and not fits(block.text):
                 flush()
-            buffer.append(block.text)
+            buffer.append((block.text, True))
+            headings.add(block.text)
+            heading = block.text
             continue
         if block.atomic:
             flush()
-            chunks.append(block.text.strip())
+            # Carried headings lead the atomic block; the block itself stays verbatim.
+            chunks.append(joined(block.text.strip()))
+            buffer = []
+            continue
+        if block.kind == "table":
+            # Continuation groups repeat the table header and the nearest heading,
+            # so every piece stays interpretable on its own.
+            budget = size - len(heading) - 2 if size > 0 and heading else size
+            for group in _table_row_groups(block.text, max(budget, 1) if size > 0 else 0):
+                if buffer and (fits(group) or [text for text, _ in buffer] == [heading]):
+                    buffer.append((group, False))
+                    continue
+                flush()
+                if heading and not buffer:
+                    buffer.append((heading, True))
+                buffer.append((group, False))
             continue
         for part in _markdown_regular_parts(block, cfg, size):
-            candidate = "\n\n".join(buffer + [part]).strip()
-            if buffer and size > 0 and len(candidate) > size:
+            if buffer and not fits(part):
                 flush()
-            buffer.append(part)
-    flush()
+            buffer.append((part, True))
+    flush(carry_heading=False)
     return chunks or [body]
 
 def _split_by_size(body: str, size: int, overlap: int) -> list[str]:
@@ -326,11 +456,29 @@ def _split_by_paragraph(
     return _pack(parts, size, overlap) or [body]
 
 
+def _child_index_enabled(cfg: ProcessConfigIn) -> bool:
+    return not (cfg.trainingType == "qa" or cfg.qaEnhance) and cfg.chunkSettingMode == "custom" and cfg.useChildIndex
+
+
+def block_indexes(parent: str, cfg: ProcessConfigIn | None = None) -> tuple[list[str], list[str]]:
+    """Return (child windows, table row sentences) for one parent chunk.
+
+    Pipe-delimited table text makes poor child windows, so tables are removed
+    before windowing and indexed one row per vector instead. The parent keeps
+    its whole-chunk vector whenever no prose child windows exist.
+    """
+    data = cfg or ProcessConfigIn()
+    if not _child_index_enabled(data) or not _has_markdown_table(parent):
+        return child_indexes(parent, data), []
+    blocks = markdown_blocks(parent)
+    rows = [sentence for block in blocks if block.kind == "table" for sentence in table_row_sentences(block.text)]
+    prose = "\n\n".join(block.text for block in blocks if block.kind != "table")
+    return child_indexes(prose, data), rows
+
+
 def child_indexes(parent: str, cfg: ProcessConfigIn | None = None) -> list[str]:
     data = cfg or ProcessConfigIn()
-    if data.trainingType == "qa" or data.qaEnhance:
-        return []
-    if data.chunkSettingMode != "custom" or not data.useChildIndex:
+    if not _child_index_enabled(data):
         return []
     size, _overlap = process_size(data)
     child = index_size_of(data)
@@ -393,7 +541,13 @@ def _heading_only_part(text: str) -> bool:
 
 def chunk_title(part: str, fallback: str = "") -> str:
     """Prefer 第X条 over a chapter/markdown heading glued onto the same parent."""
-    labels = [index_label(line) for line in (part or "").splitlines()]
+    labels: list[str] = []
+    for line in (part or "").splitlines():
+        if _is_table_delimiter(line):
+            continue
+        if line.strip().startswith("|"):
+            line = " / ".join(cell for cell in table_cells(line) if cell)
+        labels.append(index_label(line))
     labels = [item for item in labels if item]
     if not labels:
         return (fallback or "未命名")[:80]

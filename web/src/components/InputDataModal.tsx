@@ -27,6 +27,7 @@ function nid() {
 function indexLabel(type: ChunkIndex["type"]) {
   if (type === "default") return "默认索引";
   if (type === "child") return "子块索引";
+  if (type === "row") return "表格行索引";
   if (type === "auto") return "补充索引";
   if (type === "image") return "图片索引";
   return "自定义索引";

@@ -242,7 +242,7 @@ export interface Chunk {
   indexes?: ChunkIndex[];
 }
 
-export type ChunkIndexType = "default" | "custom" | "child" | "auto" | "image";
+export type ChunkIndexType = "default" | "custom" | "child" | "row" | "auto" | "image";
 
 export interface ChunkIndex {
   id: string;

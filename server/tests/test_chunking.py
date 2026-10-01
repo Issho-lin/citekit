@@ -1,6 +1,7 @@
 import unittest
 
 from citekit_server.kb.chunking import (
+    block_indexes,
     child_indexes,
     chunk_title,
     describe_process,
@@ -105,6 +106,89 @@ class SplitParentsTest(unittest.TestCase):
         self.assertEqual(chunk_title(part), "规则说明")
 
 
+def _table(rows: int, width: int = 6) -> str:
+    lines = ["| 名称 | 数值 | 备注 |", "| --- | :---: | --- |"]
+    lines += [f"| 项{i} | {i * 10} | {'说明' * width} |" for i in range(rows)]
+    return "\n".join(lines)
+
+
+class MarkdownTableChunkingTest(unittest.TestCase):
+    def test_table_is_detected_only_with_matching_delimiter_row(self):
+        blocks = markdown_blocks(f"说明\n\n{_table(2)}\n\n结尾")
+        self.assertEqual([block.kind for block in blocks], ["paragraph", "table", "paragraph"])
+        self.assertEqual(blocks[1].metadata, {"columns": 3, "rows": 2})
+        mismatched = markdown_blocks("| a | b |\n| --- |\n| 1 | 2 |")
+        self.assertNotIn("table", [block.kind for block in mismatched])
+        fenced = markdown_blocks(f"```\n{_table(2)}\n```")
+        self.assertEqual([block.kind for block in fenced], ["code"])
+
+    def test_small_table_stays_whole_with_its_heading(self):
+        table = _table(3)
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=400)
+        parts = split_markdown_parents(f"# 配置\n\n{table}", cfg)
+        self.assertEqual(parts, [f"# 配置\n\n{table}"])
+
+    def test_oversized_table_splits_between_rows_and_repeats_header(self):
+        table = _table(30)
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=200)
+        parts = split_markdown_parents(f"前言段落。\n\n## 参数表\n\n{table}\n\n结尾段落。", cfg)
+        table_parts = [part for part in parts if "| --- | :---: | --- |" in part]
+        self.assertGreater(len(table_parts), 1)
+        for part in table_parts:
+            self.assertIn("## 参数表\n\n| 名称 | 数值 | 备注 |\n| --- | :---: | --- |", part)
+            self.assertLessEqual(len(part), cfg.chunkSize)
+        rows = [line for part in table_parts for line in part.splitlines() if line.startswith("| 项")]
+        self.assertEqual(rows, table.splitlines()[2:])
+
+    def test_heading_is_carried_to_the_table_instead_of_dangling(self):
+        table = _table(12, width=8)
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=300)
+        parts = split_markdown_parents(f"# 手册\n\n下表列出参数。\n\n## 参数表\n\n{table}\n\n结尾。", cfg)
+        self.assertEqual(parts[0], "# 手册\n\n下表列出参数。")
+        self.assertTrue(all(not part.endswith("## 参数表") for part in parts))
+        self.assertEqual(sum(part.startswith("## 参数表\n\n| 名称") for part in parts), len(parts) - 1)
+
+    def test_heading_before_code_leads_the_atomic_chunk(self):
+        code = "```bash\n" + "echo hi\n" * 20 + "```"
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=60)
+        parts = split_markdown_parents(f"前文说明。\n\n## 安装\n\n{code}", cfg)
+        self.assertEqual(parts, ["前文说明。", f"## 安装\n\n{code}"])
+
+    def test_trailing_heading_at_document_end_is_kept(self):
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=1000)
+        parts = split_markdown_parents(f"{_table(2)}\n\n## 附录", cfg)
+        self.assertTrue(parts[-1].endswith("## 附录"))
+
+    def test_single_oversized_row_is_never_cut(self):
+        long_row = "| 长 | 1 | " + "很长的内容" * 60 + " |"
+        table = "| 名称 | 数值 | 备注 |\n| --- | --- | --- |\n| 短 | 0 | 正常 |\n" + long_row
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=100)
+        parts = split_markdown_parents(table, cfg)
+        self.assertEqual(sum(long_row in part for part in parts), 1)
+        self.assertTrue(all(part.startswith("| 名称 | 数值 | 备注 |") for part in parts))
+
+    def test_plain_text_with_gfm_table_takes_markdown_path(self):
+        table = _table(30)
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=200)
+        parts = split_parents(f"概述\n\n{table}", cfg)
+        rows = [line for part in parts for line in part.splitlines() if line.startswith("| 项")]
+        self.assertEqual(rows, table.splitlines()[2:])
+
+    def test_pipe_text_without_delimiter_is_not_a_table(self):
+        self.assertEqual([block.kind for block in markdown_blocks("a | b\nc | d")], ["paragraph"])
+
+    def test_row_indexes_pair_cells_with_headers_when_child_index_enabled(self):
+        part = "## 价格\n\n| 版本 | 价格 | 说明 |\n| --- | --- | --- |\n| 基础版 | 0 |  |\n| 专业版 | 99 | 含 a\\|b |"
+        enabled = ProcessConfigIn(chunkSettingMode="custom", useChildIndex=True, chunkSize=1000, indexSize=200)
+        children, rows = block_indexes(part, enabled)
+        self.assertEqual(rows, ["版本: 基础版；价格: 0", "版本: 专业版；价格: 99；说明: 含 a|b"])
+        self.assertEqual(children, [])
+        self.assertEqual(block_indexes(part, ProcessConfigIn()), ([], []))
+
+    def test_table_chunk_title_uses_header_cells(self):
+        self.assertEqual(chunk_title(_table(1), "fallback"), "名称 / 数值 / 备注")
+
+
 class MarkdownBlockChunkingTest(unittest.TestCase):
     def test_code_fence_keeps_hash_and_whitespace_atomic(self):
         text = """# 使用方式
@@ -135,7 +219,7 @@ def run():
         diagram = "```mermaid\ngraph TD\n" + "A-->B\n" * 80 + "```"
         cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=64)
         parts = split_markdown_parents(f"# 流程\n\n{diagram}\n\n说明。", cfg)
-        self.assertIn(diagram, parts)
+        self.assertEqual(parts, [f"# 流程\n\n{diagram}", "说明。"])
         self.assertGreater(len(diagram), cfg.chunkSize)
 
     def test_unclosed_fence_consumes_remaining_headings(self):
@@ -150,8 +234,7 @@ SELECT 1;
         self.assertEqual([block.kind for block in blocks], ["heading", "code"])
         self.assertTrue(blocks[-1].metadata["unclosed_fence"])
         parts = split_parents(text, ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=20))
-        self.assertEqual(len(parts), 2)
-        self.assertIn("## 这不是标题", parts[-1])
+        self.assertEqual(parts, [text.strip()])
 
     def test_tilde_fence_requires_matching_closer(self):
         text = """~~~~yaml

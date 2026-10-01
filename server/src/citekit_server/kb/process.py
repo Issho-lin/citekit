@@ -6,7 +6,7 @@ from pathlib import Path
 from citekit_server.calls.log import call_scope
 from citekit_server.kb.chunking import (
     Unit,
-    child_indexes,
+    block_indexes,
     chunk_title,
     markdown_blocks,
     describe_process,
@@ -160,8 +160,11 @@ def run_process(
             # A vector for a code fragment without its fence/context is worse
             # than indexing the whole atomic parent block.
             if not is_atomic:
-                for child in child_indexes(part, cfg):
+                children, rows = block_indexes(part, cfg)
+                for child in children:
                     unit.add_index("child", child)
+                for row in rows:
+                    unit.add_index("row", row)
             units.append(unit)
         _auto_indexes(units, cfg, preview, llm, notes)
 
@@ -272,8 +275,9 @@ def _load_text(
 
 
 def _is_atomic_markdown_chunk(text: str) -> bool:
-    blocks = markdown_blocks(text)
-    return len(blocks) == 1 and blocks[0].atomic and blocks[0].text.strip() == (text or "").strip()
+    # Leading headings may accompany an atomic block; any other content does not.
+    body = [block for block in markdown_blocks(text) if block.kind != "heading"]
+    return len(body) == 1 and body[0].atomic
 
 
 def _append_image_captions(

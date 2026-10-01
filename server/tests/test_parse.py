@@ -67,8 +67,9 @@ npm run start
                 file_path=str(path),
             )
         self.assertEqual(parsed.source_format, "markdown")
-        unit = next(unit for unit in result.units if unit.text.startswith("```bash"))
-        self.assertEqual(unit.text, "```bash\n# 注释\nnpm run start\n```")
+        unit = next(unit for unit in result.units if "```bash" in unit.text)
+        self.assertEqual(unit.text, "# 部署\n\n```bash\n# 注释\nnpm run start\n```")
+        self.assertEqual(unit.title, "部署")
         self.assertTrue(unit.metadata["atomic"])
         self.assertEqual(unit.indexes, [])
 

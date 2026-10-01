@@ -344,6 +344,8 @@ export function PreviewData() {
                                 kind:
                                   idx.type === "child"
                                     ? "子块"
+                                    : idx.type === "row"
+                                      ? "表格行"
                                     : idx.type === "auto"
                                       ? "补充"
                                       : idx.type === "image"
