@@ -5,6 +5,8 @@ from citekit_server.kb.chunking import (
     chunk_title,
     describe_process,
     index_text,
+    markdown_blocks,
+    split_markdown_parents,
     split_parents,
 )
 from citekit_server.schemas import ProcessConfigIn
@@ -101,6 +103,68 @@ class SplitParentsTest(unittest.TestCase):
     def test_markdown_permalink_title_is_plain(self):
         part = "## [\u200b](https://docs.example.com/guide#rules)规则说明\n正文若干字。"
         self.assertEqual(chunk_title(part), "规则说明")
+
+
+class MarkdownBlockChunkingTest(unittest.TestCase):
+    def test_code_fence_keeps_hash_and_whitespace_atomic(self):
+        text = """# 使用方式
+
+说明文字。
+
+```python
+    # 这是 Python 注释，不是 Markdown 标题
+def run():
+    return "# literal"
+```
+
+## 后续
+
+后续说明。"""
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=30)
+        parts = split_markdown_parents(text, cfg)
+        code = next(part for part in parts if part.startswith("```python"))
+        self.assertEqual(code, """```python
+    # 这是 Python 注释，不是 Markdown 标题
+def run():
+    return "# literal"
+```""")
+        self.assertEqual(sum("这是 Python 注释" in part for part in parts), 1)
+        self.assertTrue(any(part.startswith("## 后续") for part in parts))
+
+    def test_mermaid_is_atomic_when_oversized(self):
+        diagram = "```mermaid\ngraph TD\n" + "A-->B\n" * 80 + "```"
+        cfg = ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=64)
+        parts = split_markdown_parents(f"# 流程\n\n{diagram}\n\n说明。", cfg)
+        self.assertIn(diagram, parts)
+        self.assertGreater(len(diagram), cfg.chunkSize)
+
+    def test_unclosed_fence_consumes_remaining_headings(self):
+        text = """# 标题
+
+```sql
+-- 注释
+SELECT 1;
+## 这不是标题
+"""
+        blocks = markdown_blocks(text)
+        self.assertEqual([block.kind for block in blocks], ["heading", "code"])
+        self.assertTrue(blocks[-1].metadata["unclosed_fence"])
+        parts = split_parents(text, ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=20))
+        self.assertEqual(len(parts), 2)
+        self.assertIn("## 这不是标题", parts[-1])
+
+    def test_tilde_fence_requires_matching_closer(self):
+        text = """~~~~yaml
+# not a heading
+~~~
+still code
+~~~~
+# actual heading
+正文。"""
+        blocks = markdown_blocks(text)
+        self.assertEqual([block.kind for block in blocks], ["code", "heading", "paragraph"])
+        self.assertIn("~~~", blocks[0].text)
+
 
 
 class ChildIndexTest(unittest.TestCase):

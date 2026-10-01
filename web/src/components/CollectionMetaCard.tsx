@@ -16,6 +16,7 @@ export function CollectionMetaCard({ source, process }: { source: Source; proces
     { label: "来源", value: SOURCE_LABEL[source.type] },
     { label: "集合名称", value: source.title },
     { label: "更新时间", value: source.updatedAt },
+    ...(source.type === "web" ? [{ label: "最近检查", value: source.lastSeenAt || "尚未同步" }] : []),
     { label: "处理方式", value: process.trainingType === "qa" ? "问答对提取" : "分块存储" },
     { label: "PDF 增强解析", value: yesNo(process.pdfEnhance) },
     { label: "将文档标题加入索引", value: yesNo(process.indexPrefixTitle) },

@@ -155,6 +155,16 @@ export const api = {
       signal,
       onProgress,
     ),
+  createProcessingDraft: (kbId: string, body: { title: string; type: string; locator?: string; parentId?: string; fileId?: string; rawText?: string; process?: ProcessConfig; site?: { root: string; linkSelector: string } }) =>
+    request<{
+      draftId: string; cached: boolean;
+      chunks: { title: string; text: string; chars: number; answer?: string; indexes?: { id?: string; type?: string; text: string }[] }[];
+      total: number; shown: number; parsedText: string; parsedTruncated: boolean; parsedChars: number;
+      applied: string; notes: string[]; minChars: number; maxChars: number; avgChars: number;
+      oversize: number; chunkSize: number; indexCount: number;
+    }>(`/api/kbs/${encodeURIComponent(kbId)}/processing-drafts`, { method: "POST", body: JSON.stringify(body) }),
+  commitProcessingDrafts: (kbId: string, draftIds: string[]) =>
+    request<{ imported: number }>(`/api/kbs/${encodeURIComponent(kbId)}/processing-drafts/commit`, { method: "POST", body: JSON.stringify({ draftIds }) }),
   previewKb: (kbId: string, body: { fileId?: string; rawText?: string; process?: ProcessConfig }) =>
     request<{
       chunks: { title: string; text: string; chars: number; answer?: string; indexes?: { id?: string; type?: string; text: string }[] }[];

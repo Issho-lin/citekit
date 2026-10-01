@@ -135,6 +135,7 @@ export interface Source extends ProcessConfig {
   status: "synced" | "syncing" | "error";
   errorMessage?: string;
   updatedAt: string;
+  lastSeenAt?: string | null;
   chunkCount?: number;
   fileId?: string;
   hasOriginal?: boolean;

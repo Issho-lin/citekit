@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import Mock, patch
 
-from citekit_server.connectors.common import ConnectorDocument, persist_documents
+from citekit_server.connectors.common import ConnectorDocument, PreviewedDocumentIn, persist_documents
 
 
 class ConnectorCommonTest(unittest.TestCase):
@@ -10,6 +10,10 @@ class ConnectorCommonTest(unittest.TestCase):
         query = db.query.return_value
         query.filter.return_value.one_or_none.return_value = existing
         return db
+
+    def test_previewed_document_generates_locator_when_provider_url_is_missing(self):
+        document = PreviewedDocumentIn(id="node_1", title="文档", text="内容")
+        self.assertEqual(document.to_document().locator, "connector:node_1")
 
     @patch("citekit_server.connectors.common.ingest_source")
     @patch("citekit_server.connectors.common.new_id", return_value="src_new")

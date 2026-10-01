@@ -8,6 +8,7 @@ from citekit_server.kb.chunking import (
     Unit,
     child_indexes,
     chunk_title,
+    markdown_blocks,
     describe_process,
     has_heading,
     heading_level,
@@ -15,6 +16,7 @@ from citekit_server.kb.chunking import (
     index_text,
     parse_qa_pairs,
     parse_string_list,
+    split_markdown_parents,
     split_parents,
 )
 from citekit_server.db import AiModelRow
@@ -135,8 +137,15 @@ def run_process(
     if filename.lower().endswith(".pdf") and not cfg.pdfEnhance and len(body) < 200:
         notes.append("PDF 抽出的文字很少。扫描件请打开「PDF 增强解析」。")
 
-    ai_parts = _ai_paragraphs(body, cfg, preview, llm, notes)
-    parents = split_parents(body, cfg, llm_max_context=llm_max_context, ai_parts=ai_parts)
+    # Markdown keeps syntax-sensitive whitespace and fenced blocks intact.
+    # Other formats remain on the stable text path until their block parsers land.
+    is_markdown = parsed.source_format == "markdown"
+    ai_parts = None if is_markdown else _ai_paragraphs(body, cfg, preview, llm, notes)
+    parents = (
+        split_markdown_parents(body, cfg, llm_max_context=llm_max_context)
+        if is_markdown
+        else split_parents(body, cfg, llm_max_context=llm_max_context, ai_parts=ai_parts)
+    )
     chunk_lengths = [len(part) for part in parents]
     chunk_total = len(parents)
 
@@ -146,9 +155,13 @@ def run_process(
     else:
         for index, part in enumerate(parents, start=1):
             heading = chunk_title(part, f"{title} · 块 {index}")
-            unit = Unit(title=heading, text=part)
-            for child in child_indexes(part, cfg):
-                unit.add_index("child", child)
+            is_atomic = is_markdown and _is_atomic_markdown_chunk(part)
+            unit = Unit(title=heading, text=part, metadata={"source_format": parsed.source_format, "atomic": is_atomic})
+            # A vector for a code fragment without its fence/context is worse
+            # than indexing the whole atomic parent block.
+            if not is_atomic:
+                for child in child_indexes(part, cfg):
+                    unit.add_index("child", child)
             units.append(unit)
         _auto_indexes(units, cfg, preview, llm, notes)
 
@@ -213,7 +226,7 @@ def _load_text(
     notes: list[str],
 ) -> ParseOut:
     if not file_path:
-        return ParseOut(text=(raw_text or "").strip())
+        return ParseOut(text=(raw_text or "").strip(), source_format="text")
     parsed = parse_file(
         file_path,
         filename,
@@ -252,9 +265,15 @@ def _load_text(
     body = "\n\n".join(part for part in markdown if part)
     if body:
         parsed.text = body
+        parsed.source_format = "markdown"
     else:
         notes.append("PDF 增强解析没有得到正文，已使用本地抽取结果。")
     return parsed
+
+
+def _is_atomic_markdown_chunk(text: str) -> bool:
+    blocks = markdown_blocks(text)
+    return len(blocks) == 1 and blocks[0].atomic and blocks[0].text.strip() == (text or "").strip()
 
 
 def _append_image_captions(

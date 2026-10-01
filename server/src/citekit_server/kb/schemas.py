@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProcessConfigIn(BaseModel):
@@ -105,6 +105,7 @@ class SourceOut(BaseModel):
     status: str
     errorMessage: str | None = None
     updatedAt: str
+    lastSeenAt: str | None = None
     chunkCount: int = 0
     trainingType: str = "chunk"
     chunkTriggerType: str = "minSize"
@@ -218,3 +219,28 @@ class PreviewOut(BaseModel):
     oversize: int = 0
     chunkSize: int = 1000
     indexCount: int = 0
+
+
+class ProcessingDraftSiteIn(BaseModel):
+    root: str = Field(min_length=1, max_length=2_000)
+    linkSelector: str = Field(default="", max_length=500)
+
+
+class ProcessingDraftIn(BaseModel):
+    title: str = "预览"
+    type: str = "upload"
+    locator: str = ""
+    parentId: str | None = None
+    fileId: str | None = None
+    rawText: str | None = None
+    process: ProcessConfigIn | None = None
+    site: ProcessingDraftSiteIn | None = None
+
+
+class ProcessingDraftOut(PreviewOut):
+    draftId: str
+    cached: bool = False
+
+
+class CommitProcessingDraftIn(BaseModel):
+    draftIds: list[str] = []

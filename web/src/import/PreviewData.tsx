@@ -1,13 +1,35 @@
-import { Box, Button, Flex, HStack } from "@chakra-ui/react";
+import { Box, Button, Flex, HStack, useToast } from "@chakra-ui/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { indexText } from "../indexText";
 import type { ProcessConfig } from "../types";
+import { useStore } from "../mock/store";
 import { useDatasetImport } from "./Context";
 import type { ImportSourceItemType } from "./types";
 
-type PreviewResult = Awaited<ReturnType<typeof api.previewKb>>;
+type PreviewResult = Awaited<ReturnType<typeof api.createProcessingDraft>>;
 type Tab = "chunks" | "parsed";
+
+function sourceType(importSource: ReturnType<typeof useDatasetImport>["importSource"], kbKind?: string) {
+  if (importSource === "fileLink") return "web";
+  if (importSource === "fileCustom") return "manual";
+  if (importSource === "imageDataset") return "image";
+  if (importSource === "websiteDataset") return "web";
+  if (importSource === "apiDataset") {
+    return kbKind === "feishu" || kbKind === "yuque" || kbKind === "dingtalk" ? kbKind : "api";
+  }
+  return "upload";
+}
+
+function websiteSite(source: ImportSourceItemType) {
+  try {
+    const config = JSON.parse(source.rawText || "{}") as { root?: string; linkSelector?: string };
+    const root = config.root?.trim() || "";
+    return root ? { root, linkSelector: config.linkSelector?.trim() || "" } : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function needsModel(process: ProcessConfig) {
   return (
@@ -22,7 +44,9 @@ function needsModel(process: ProcessConfig) {
 }
 
 export function PreviewData() {
-  const { goToNext, sources, process, kbId, importSource } = useDatasetImport();
+  const toast = useToast();
+  const { goToNext, sources, setSources, process, kbId, importSource, parentId } = useDatasetImport();
+  const { knowledgeBases } = useStore();
   const [previewFile, setPreviewFile] = useState<ImportSourceItemType | undefined>(sources[0]);
   const [result, setResult] = useState<PreviewResult | null>(null);
   const [tab, setTab] = useState<Tab>("chunks");
@@ -35,41 +59,52 @@ export function PreviewData() {
     }
   }, [sources, previewFile]);
 
-  const processKey = JSON.stringify(process);
-  const fileKey = `${previewFile?.id ?? ""}:${previewFile?.dbFileId ?? ""}:${previewFile?.rawText ?? ""}`;
+  const processKey = JSON.stringify(importSource === "imageDataset" ? { ...process, imageIndex: true } : process);
+  const kbKind = knowledgeBases.find((kb) => kb.id === kbId)?.kind;
+  const draftKey = (source: ImportSourceItemType) => `${source.id}:${source.dbFileId ?? ""}:${source.rawText ?? ""}:${source.link ?? ""}:${processKey}:${importSource}:${kbKind ?? ""}`;
+  const createDraft = async (source: ImportSourceItemType): Promise<PreviewResult> => {
+    const key = draftKey(source);
+    const cached = source.processingDraft;
+    if (cached?.key === key) return cached.result as PreviewResult;
+    const website = importSource === "websiteDataset";
+    const next = await api.createProcessingDraft(kbId, {
+      title: source.sourceName,
+      type: sourceType(importSource, kbKind),
+      locator: source.link?.trim() || `${source.connectorMeta?.source || importSource}:${source.id}`,
+      parentId,
+      fileId: source.dbFileId,
+      // Website rawText carries crawl settings, not page content.
+      rawText: website ? undefined : source.rawText,
+      process: importSource === "imageDataset" ? { ...process, imageIndex: true } : process,
+      site: website ? websiteSite(source) : undefined,
+    });
+    setSources((items) => items.map((item) => item.id === source.id ? { ...item, processingDraft: { key, id: next.draftId, result: next } } : item));
+    return next;
+  };
 
   useEffect(() => {
-    if (!previewFile) {
-      setResult(null);
-      setError("");
-      return;
-    }
+    if (!previewFile) { setResult(null); setError(""); return; }
     let cancelled = false;
-    setResult(null);
-    setLoading(true);
-    setError("");
-    void api
-      .previewKb(kbId, {
-        fileId: previewFile.dbFileId,
-        rawText: previewFile.rawText,
-        process: importSource === "imageDataset" ? { ...process, imageIndex: true } : process,
-      })
-      .then((next) => {
-        if (cancelled) return;
-        setResult(next);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setResult(null);
-        setError(err instanceof Error ? err.message : "预览失败");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fileKey, kbId, processKey, process]);
+    setResult(null); setLoading(true); setError("");
+    void createDraft(previewFile)
+      .then((next) => { if (!cancelled) setResult(next); })
+      .catch((err: unknown) => { if (!cancelled) { setResult(null); setError(err instanceof Error ? err.message : "处理草稿生成失败"); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  // createDraft intentionally depends on the source/config fingerprint above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewFile?.id, previewFile?.dbFileId, previewFile?.rawText, previewFile?.link, kbId, processKey, importSource, parentId]);
+
+  async function prepareAllAndContinue() {
+    setLoading(true); setError("");
+    try {
+      for (const source of sources) await createDraft(source);
+      goToNext();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "存在文件处理失败";
+      setError(message); toast({ title: message, status: "error" });
+    } finally { setLoading(false); }
+  }
 
   const total = result?.total ?? 0;
   const shown = result?.shown ?? result?.chunks.length ?? 0;
@@ -77,7 +112,7 @@ export function PreviewData() {
   return (
     <Flex flexDirection="column" h="100%">
       <Box fontSize="sm" color="myGray.500" mb={3} lineHeight={1.6}>
-        对照解析原文和切块结果，确认长度和切点符合预期后再入库。入库后可在数据集页看全部分块，知识库「试搜」验证检索。
+        此处生成可确认的处理草稿：解析、切块及模型增强结果都会缓存。切换文件不会重复处理；进入下一步时会自动补齐未处理文件，确认上传只进行向量化和入库。
       </Box>
       <Flex
         flex="1 0 0"
@@ -233,15 +268,44 @@ export function PreviewData() {
                       <Box
                         key={index}
                         mb={3}
-                        pb={3}
-                        borderBottom="1px solid"
-                        borderColor="myGray.200"
+                        bg="white"
+                        borderWidth="1px"
+                        borderColor={
+                          result.chunkSize > 0 && item.chars > result.chunkSize ? "orange.200" : "myGray.200"
+                        }
+                        borderRadius="md"
+                        overflow="hidden"
+                        boxShadow="0 1px 2px rgba(19, 51, 107, 0.05)"
                       >
-                        <Flex fontSize="xs" color="myGray.500" mb={1.5} gap={2}>
-                          <Box color="primary.600" fontWeight={500}>
+                        <Flex
+                          fontSize="xs"
+                          color="myGray.500"
+                          px={3}
+                          py={1.5}
+                          gap={2}
+                          align="center"
+                          bg="myGray.100"
+                          borderBottomWidth="1px"
+                          borderColor="myGray.150"
+                        >
+                          <Box
+                            color="white"
+                            bg="primary.500"
+                            borderRadius="sm"
+                            px={1.5}
+                            fontWeight={600}
+                            flexShrink={0}
+                          >
                             #{index + 1}
                           </Box>
+                          {item.title ? (
+                            <Box color="myGray.700" fontWeight={500} noOfLines={1} minW={0}>
+                              {item.title}
+                            </Box>
+                          ) : null}
                           <Box
+                            ml="auto"
+                            flexShrink={0}
                             color={
                               result.chunkSize > 0 && item.chars > result.chunkSize
                                 ? "orange.600"
@@ -251,42 +315,62 @@ export function PreviewData() {
                             {item.chars} 字
                           </Box>
                         </Flex>
-                        <Box fontSize="sm" color="myGray.600" whiteSpace="pre-wrap" wordBreak="break-word">
+                        <Box
+                          px={3}
+                          py={2.5}
+                          fontSize="sm"
+                          color="myGray.700"
+                          lineHeight={1.7}
+                          whiteSpace="pre-wrap"
+                          wordBreak="break-word"
+                        >
                           {item.text}
                         </Box>
                         {item.answer ? (
-                          <Box mt={2} fontSize="xs" color="myGray.500" whiteSpace="pre-wrap">
+                          <Box px={3} pb={2.5} fontSize="xs" color="myGray.500" whiteSpace="pre-wrap">
                             答：{item.answer}
                           </Box>
                         ) : null}
-                        {(item.indexes || []).length > 0 ? (
-                          <Box mt={2} fontSize="xs" color="myGray.400" lineHeight={1.7}>
-                            {(item.indexes || []).map((idx, i) => {
-                              const preview = indexText(idx.text);
-                              const kind =
-                                idx.type === "child"
-                                  ? "子块"
-                                  : idx.type === "auto"
-                                    ? "补充"
-                                    : idx.type === "image"
-                                      ? "图片"
-                                      : "索引";
-                              return (
-                                <Box key={i}>
-                                  {kind} · {preview.slice(0, 80)}
-                                  {preview.length > 80 ? "…" : ""}
-                                </Box>
-                              );
-                            })}
-                          </Box>
-                        ) : (
-                          <Box mt={2} fontSize="xs" color="myGray.400" lineHeight={1.7}>
-                            {(() => {
-                              const preview = indexText(item.text);
-                              return `向量索引 · ${preview.slice(0, 80)}${preview.length > 80 ? "…" : ""}`;
-                            })()}
-                          </Box>
-                        )}
+                        <Box
+                          px={3}
+                          py={2}
+                          fontSize="xs"
+                          bg="myGray.50"
+                          borderTopWidth="1px"
+                          borderColor="myGray.150"
+                        >
+                          {((item.indexes || []).length > 0
+                            ? (item.indexes || []).map((idx) => ({
+                                kind:
+                                  idx.type === "child"
+                                    ? "子块"
+                                    : idx.type === "auto"
+                                      ? "补充"
+                                      : idx.type === "image"
+                                        ? "图片"
+                                        : "索引",
+                                text: indexText(idx.text),
+                              }))
+                            : [{ kind: "待向量化文本", text: indexText(item.text) }]
+                          ).map((row, i) => (
+                            <Flex key={i} align="center" gap={2} minW={0} _notFirst={{ mt: 1 }}>
+                              <Box
+                                flexShrink={0}
+                                px={1.5}
+                                lineHeight="18px"
+                                borderRadius="sm"
+                                bg="primary.50"
+                                color="primary.600"
+                                fontWeight={500}
+                              >
+                                {row.kind}
+                              </Box>
+                              <Box flex={1} minW={0} color="myGray.500" noOfLines={1} title={row.text}>
+                                {row.text}
+                              </Box>
+                            </Flex>
+                          ))}
+                        </Box>
                       </Box>
                     ))}
                   </>
@@ -301,7 +385,9 @@ export function PreviewData() {
         </Flex>
       </Flex>
       <Flex mt={2} justifyContent="flex-end">
-        <Button onClick={goToNext}>下一步</Button>
+        <Button isLoading={loading} loadingText="正在处理全部文件" onClick={() => void prepareAllAndContinue()}>
+          下一步
+        </Button>
       </Flex>
     </Flex>
   );

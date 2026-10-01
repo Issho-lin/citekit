@@ -55,6 +55,15 @@ def fetch_web(url: str, selector: str = "") -> str:
     return html_from(html, selector, base_url=target)
 
 
+def fetch_page(url: str, selector: str = "", client: httpx.Client | None = None) -> CrawledPage:
+    final, html, headers = _get_html(url, client)
+    final_url = normalize_url(final, url) or url
+    return CrawledPage(
+        final_url, page_title(html, final_url), html_from(html, selector, base_url=final_url),
+        headers.get("etag", ""), headers.get("last-modified", ""),
+    )
+
+
 def html_from(raw: str, selector: str = "", base_url: str = "") -> str:
     soup = BeautifulSoup(slim_html(raw), "html.parser")
     query = (selector or "").strip()
@@ -203,19 +212,13 @@ def _enqueue_links(queue: deque[tuple[str, int]], seen: set[str], html: str, fin
             added += 1
 
 
-def http_status(url: str) -> int | None:
-    """Return a definitive status only; transport failures remain unknown."""
-    try:
-        with httpx.Client(follow_redirects=True, timeout=15, headers={"User-Agent": USER_AGENT}) as client:
-            response = client.get(url)
-            return response.status_code
-    except httpx.HTTPError:
-        return None
+def site_client() -> httpx.Client:
+    return httpx.Client(follow_redirects=True, timeout=25, headers={"User-Agent": USER_AGENT})
 
 
 def _get_html(url: str, client: httpx.Client | None = None) -> tuple[str, str, httpx.Headers]:
     if client is None:
-        with httpx.Client(follow_redirects=True, timeout=25, headers={"User-Agent": USER_AGENT}) as own:
+        with site_client() as own:
             return _get_html(url, own)
     response = client.get(url)
     response.raise_for_status()

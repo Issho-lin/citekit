@@ -6,6 +6,7 @@ import secrets
 import threading
 from typing import Iterator
 
+import httpx
 from sqlalchemy import delete, update
 from sqlalchemy.exc import IntegrityError
 
@@ -15,7 +16,7 @@ from citekit_server.ids import new_id
 from citekit_server.infra.search_index import delete_source as delete_source_index
 from citekit_server.infra.vectors import delete_source_points
 from citekit_server.kb.ingest import ingest_source, now_stamp
-from citekit_server.kb.web import MAX_DEPTH, MAX_PAGES, content_hash, http_status, iter_site_pages, normalize_url
+from citekit_server.kb.web import MAX_DEPTH, MAX_PAGES, content_hash, fetch_page, iter_site_pages, normalize_url, site_client
 from citekit_server.schemas import ProcessConfigIn
 
 
@@ -115,43 +116,83 @@ def _run_site_sync(kb_id: str, lease: WebsiteSyncLease) -> None:
             raise RuntimeError("网页链接无效")
         selector = (kb.website_selector or "").strip()
         link_selector = (kb.website_link_selector or "").strip()
-        process = ProcessConfigIn(webSelector=selector).model_dump()
         known = {row.locator: row.id for row in db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "web").all()}
     finally:
         db.close()
     # A configured website may be a curated subset of a larger crawl.  Subsequent
-    # syncs must only refresh that explicit selection, not silently expand it.
-    selected = set(known)
-    seen: set[str] = set()
-    for page in iter_site_pages(root, selector, link_selector, MAX_PAGES, MAX_DEPTH):
-        if selected and page.url not in selected:
-            continue
-        lease.renew()
-        seen.add(page.url)
-        source_id, changed = _upsert_page(kb_id, page.url, page.title, page.text, content_hash(page.text), page.etag, page.last_modified, process)
-        if changed:
-            ingest_source(source_id)
-    for url, source_id in known.items():
-        if url not in seen and http_status(url) in (404, 410):
-            _delete_web_source(kb_id, source_id)
-    if not seen:
+    # syncs refresh exactly that selection by URL: re-crawling from the root would
+    # depend on the link selector and the page budget, silently skipping pages.
+    if known:
+        synced = _refresh_known_pages(kb_id, known, selector, lease)
+    else:
+        synced = 0
+        for page in iter_site_pages(root, selector, link_selector, MAX_PAGES, MAX_DEPTH):
+            lease.renew()
+            synced += 1
+            source_id, changed = _upsert_page(kb_id, page.url, page.title, page.text, page.etag, page.last_modified, selector)
+            if changed:
+                ingest_source(source_id)
+    if not synced:
         raise RuntimeError("没有抓到可入库的静态页面")
 
 
-def _upsert_page(kb_id: str, url: str, title: str, text: str, digest: str, etag: str, last_modified: str, process: dict) -> tuple[str, bool]:
+def _refresh_known_pages(kb_id: str, known: dict[str, str], selector: str, lease: WebsiteSyncLease) -> int:
+    synced = 0
+    with site_client() as client:
+        for url, source_id in known.items():
+            lease.renew()
+            try:
+                page = fetch_page(url, selector, client)
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                if code in (404, 410):
+                    _delete_web_source(kb_id, source_id)
+                else:
+                    _mark_fetch_error(source_id, f"抓取失败：HTTP {code}")
+                continue
+            except (httpx.HTTPError, RuntimeError) as exc:
+                _mark_fetch_error(source_id, f"抓取失败：{exc}" if str(exc) else "抓取失败")
+                continue
+            synced += 1
+            # Keep the stored locator even if the page redirects, so a redirect
+            # never forks one page into two sources.
+            source_id, changed = _upsert_page(kb_id, url, page.title, page.text, page.etag, page.last_modified, selector)
+            if changed:
+                ingest_source(source_id)
+    return synced
+
+
+def _upsert_page(kb_id: str, url: str, title: str, text: str, etag: str, last_modified: str, selector: str) -> tuple[str, bool]:
+    digest = content_hash(text)
     db = SessionLocal()
     try:
         row = db.query(SourceRow).filter(SourceRow.kb_id == kb_id, SourceRow.type == "web", SourceRow.locator == url).one_or_none()
         changed, stamp = row is None or row.content_hash != digest or row.status != "synced", now_stamp()
         if row is None:
+            process = ProcessConfigIn(webSelector=selector).model_dump()
             row = SourceRow(id=new_id("src"), kb_id=kb_id, type="web", title=title or url, locator=url, acl="internal", status="syncing", process=process, raw_text=text, content_hash=digest, last_seen_at=stamp, etag=etag or None, last_modified=last_modified or None, updated_at=stamp, chunk_count=0)
             db.add(row)
         else:
             row.title, row.last_seen_at, row.etag, row.last_modified = title or row.title, stamp, etag or None, last_modified or None
             if changed:
+                # Chunking choices made at import time belong to the page; only
+                # the site-wide content selector follows the sync configuration.
+                process = {**(row.process or {}), "webSelector": selector}
                 row.raw_text, row.process, row.content_hash, row.status, row.error_message, row.updated_at = text, process, digest, "syncing", None, stamp
         db.commit()
         return row.id, changed
+    finally:
+        db.close()
+
+
+def _mark_fetch_error(source_id: str, message: str) -> None:
+    db = SessionLocal()
+    try:
+        row = db.get(SourceRow, source_id)
+        if row:
+            # Existing chunks stay searchable; the next successful fetch re-ingests.
+            row.status, row.error_message, row.updated_at = "error", message[:500], now_stamp()
+            db.commit()
     finally:
         db.close()
 

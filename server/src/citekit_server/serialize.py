@@ -136,6 +136,7 @@ def source_to_out(row: SourceRow) -> SourceOut:
         status=row.status,
         errorMessage=row.error_message,
         updatedAt=row.updated_at,
+        lastSeenAt=row.last_seen_at,
         chunkCount=row.chunk_count,
         **data,
         fileId=row.file_id,

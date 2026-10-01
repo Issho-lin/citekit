@@ -46,6 +46,33 @@ class ImageProcessTest(unittest.TestCase):
         self.assertTrue(any("图片理解" in note or "图片没有生成" in note for note in result.notes))
 
 
+class MarkdownProcessTest(unittest.TestCase):
+    def test_markdown_file_preserves_fenced_code_and_skips_child_split(self):
+        content = """# 部署
+
+```bash
+# 注释
+npm run start
+```
+
+正文。"""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "guide.md"
+            path.write_text(content, encoding="utf-8")
+            parsed = parse_file(str(path), "guide.md")
+            result = run_process(
+                cfg=ProcessConfigIn(chunkTriggerType="forceChunk", chunkSize=10, chunkSettingMode="custom", useChildIndex=True, indexSize=8),
+                title="部署指南",
+                filename="guide.md",
+                file_path=str(path),
+            )
+        self.assertEqual(parsed.source_format, "markdown")
+        unit = next(unit for unit in result.units if unit.text.startswith("```bash"))
+        self.assertEqual(unit.text, "```bash\n# 注释\nnpm run start\n```")
+        self.assertTrue(unit.metadata["atomic"])
+        self.assertEqual(unit.indexes, [])
+
+
 class ImagePromptTest(unittest.TestCase):
     def test_modes_are_not_one_caption(self):
         auto = image_prompt_for("auto")

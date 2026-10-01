@@ -13,11 +13,13 @@ from citekit_server.db import (
     ChunkRow,
     KnowledgeBaseRow,
     SessionLocal,
+    ProcessingDraftRow,
     SourceRow,
     UploadedFileRow,
 )
-from citekit_server.ids import new_uuid
+from citekit_server.ids import new_id, new_uuid
 from citekit_server.kb.process import Unit, ProcessResult, embed_items, run_process
+from citekit_server.kb.web import content_hash
 from citekit_server.schemas import PreviewChunk, PreviewOut, ProcessConfigIn
 from citekit_server.infra.storage import as_local_path
 from citekit_server.infra.upstream import embed_texts
@@ -164,6 +166,41 @@ def build_preview_from_kb(
         llm_max_context=llm.max_context if llm else None,
     )
     return _preview_out(result, cfg, title)
+
+
+def build_draft_from_kb(
+    db: Session,
+    kb: KnowledgeBaseRow,
+    *,
+    text: str,
+    file_path: str | None,
+    filename: str,
+    title: str,
+    process: ProcessConfigIn | None,
+) -> tuple[ProcessResult, PreviewOut]:
+    """Run every content-changing stage once and return a frozen review result."""
+    cfg = process or ProcessConfigIn()
+    llm = chat_model(db, kb)
+    vlm = vision_model(db, kb)
+    result = run_process(
+        cfg=cfg, title=title, filename=filename, raw_text=text, file_path=file_path,
+        preview=False, llm=_pair(db, llm), vlm=_pair(db, vlm),
+        llm_max_context=llm.max_context if llm else None,
+    )
+    return result, _preview_out(result, cfg, title)
+
+
+def draft_result_payload(result: ProcessResult, preview: PreviewOut, *, site: dict[str, str] | None = None) -> dict:
+    payload: dict = {
+        "preview": preview.model_dump(),
+        "units": [
+            {"title": unit.title, "text": unit.text, "answer": unit.answer, "indexes": unit.indexes, "metadata": unit.metadata}
+            for unit in result.units
+        ],
+    }
+    if site:
+        payload["site"] = site
+    return payload
 
 
 def _preview_out(result: ProcessResult, cfg: ProcessConfigIn, title: str) -> PreviewOut:
@@ -373,3 +410,83 @@ def reindex_chunk(db: Session, row: ChunkRow) -> None:
         for (kind, _), vector in zip(items, vectors, strict=True)
     ]
     upsert_points(kb.id, len(vectors[0]), points)
+
+
+def ingest_draft(draft_id: str) -> None:
+    """Commit a reviewed draft: only embed and persist its frozen result."""
+    db = SessionLocal()
+    try:
+        draft = db.get(ProcessingDraftRow, draft_id)
+        if not draft or draft.status != "ready":
+            raise RuntimeError("处理草稿不存在、已过期或不可提交")
+        kb = db.get(KnowledgeBaseRow, draft.kb_id)
+        if not kb:
+            raise RuntimeError("知识库不存在")
+        payload = draft.result if isinstance(draft.result, dict) else {}
+        units = [
+            Unit(
+                title=str(item.get("title") or "未命名"),
+                text=str(item.get("text") or ""),
+                answer=str(item.get("answer") or ""),
+                indexes=list(item.get("indexes") or []),
+                metadata=dict(item.get("metadata") or {}),
+            )
+            for item in payload.get("units", [])
+            if str(item.get("text") or "")
+        ]
+        if not units:
+            raise RuntimeError("草稿没有可入库内容")
+        existing = db.query(SourceRow).filter(SourceRow.kb_id == kb.id, SourceRow.type == draft.source_type, SourceRow.locator == draft.locator).one_or_none()
+        if existing:
+            source = existing
+            source.title, source.parent_id, source.process, source.file_id, source.raw_text = draft.title, draft.parent_id, draft.process, draft.file_id, draft.raw_text
+        else:
+            source = SourceRow(id=new_id("src"), kb_id=kb.id, parent_id=draft.parent_id, type=draft.source_type, title=draft.title, locator=draft.locator or draft.title, acl="internal", status="syncing", process=draft.process, file_id=draft.file_id, raw_text=draft.raw_text, updated_at=now_stamp(), chunk_count=0)
+            db.add(source)
+        source.status, source.error_message, source.updated_at = "syncing", None, now_stamp()
+        if source.type == "web" and draft.raw_text:
+            # Website sync compares this digest to decide whether a page changed.
+            source.content_hash = content_hash(draft.raw_text)
+        site = payload.get("site") if isinstance(payload.get("site"), dict) else None
+        if site and kb.kind == "website":
+            kb.website_url = str(site.get("root") or "") or kb.website_url
+            kb.website_selector = str(site.get("selector") or "")
+            kb.website_link_selector = str(site.get("linkSelector") or "")
+        db.flush()
+        cfg = ProcessConfigIn.model_validate(draft.process or {})
+        model = embedding_model(db, kb)
+        auth = resolve_auth(db, model)
+        texts: list[str] = []
+        meta: list[tuple[str, str]] = []
+        rows: list[tuple[str, Unit]] = []
+        titles: dict[str, str] = {}
+        for unit in units:
+            chunk_id = new_uuid()
+            rows.append((chunk_id, unit)); titles[chunk_id] = unit.title
+            for kind, text in embed_items(unit, source.title, cfg.indexPrefixTitle, cfg.indexChunkTitle):
+                texts.append(text); meta.append((chunk_id, kind))
+        if not texts:
+            raise RuntimeError("草稿没有可向量化的文本")
+        vectors = embed_texts(model, auth, texts)
+        db.query(ChunkRow).filter(ChunkRow.source_id == source.id).delete()
+        delete_source_points(kb.id, source.id)
+        chunk_rows: list[ChunkRow] = []
+        for index, (chunk_id, unit) in enumerate(rows, start=1):
+            row = ChunkRow(id=chunk_id, kb_id=kb.id, source_id=source.id, title=unit.title[:255], text=unit.text, locator=f"{source.locator or source.title} #{index}", position=index, answer=unit.answer or None, indexes=unit.indexes or None)
+            db.add(row); chunk_rows.append(row)
+        db.flush()
+        points = [PointStruct(id=new_uuid(), vector=vector, payload={"kb_id": kb.id, "source_id": source.id, "chunk_id": chunk_id, "index_type": kind, "title": titles[chunk_id][:80]}) for (chunk_id, kind), vector in zip(meta, vectors, strict=True)]
+        upsert_points(kb.id, len(vectors[0]), points)
+        source.chunk_count, source.status, source.updated_at = len(units), "synced", now_stamp()
+        draft.status = "committed"
+        db.commit()
+        replace_source(chunk_rows, kb_id=kb.id, source_id=source.id)
+    except Exception as exc:
+        db.rollback()
+        draft = db.get(ProcessingDraftRow, draft_id)
+        if draft:
+            draft.status, draft.error_message = "ready", str(exc)
+            db.commit()
+        raise
+    finally:
+        db.close()

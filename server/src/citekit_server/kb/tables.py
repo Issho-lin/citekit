@@ -64,6 +64,28 @@ class SourceRow(Base):
     last_modified: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
+class ProcessingDraftRow(Base):
+    """Server-side, reviewable processing output awaiting an import commit."""
+
+    __tablename__ = "kb_processing_drafts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    kb_id: Mapped[str] = mapped_column(String(32), ForeignKey("knowledge_bases.id"), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    source_type: Mapped[str] = mapped_column(String(32), default="upload")
+    locator: Mapped[str] = mapped_column(Text, default="")
+    parent_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    file_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    process: Mapped[dict] = mapped_column(JSON, default=dict)
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(32), default="ready")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(32), default="")
+    expires_at: Mapped[str] = mapped_column(String(32), default="", index=True)
+
+
 class WebsiteSyncLockRow(Base):
     __tablename__ = "website_sync_locks"
 

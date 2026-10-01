@@ -22,11 +22,9 @@ import { useDatasetImport } from "./Context";
 export function UploadStep() {
   const toast = useToast();
   const nav = useNavigate();
-  const { addSource, knowledgeBases, refreshKnowledgeBases } = useStore();
-  const { importSource, parentId, sources, setSources, process, kbId, folderToken } = useDatasetImport();
-  const kbKind = knowledgeBases.find((k) => k.id === kbId)?.kind;
+  const { refreshKnowledgeBases } = useStore();
+  const { parentId, sources, setSources, kbId } = useDatasetImport();
   const [isLoading, setIsLoading] = useState(false);
-  const connectorDocuments = sources.map((item) => ({ id: item.id, title: item.sourceName, text: item.rawText ?? "", locator: item.link ?? "" }));
 
   const { totalFilesCount, hasCreatingFiles, buttonText } = useMemo(() => {
     const totalFilesCount = sources.length;
@@ -44,85 +42,16 @@ export function UploadStep() {
     if (sources.length === 0) return;
     setIsLoading(true);
     try {
-      if (importSource === "websiteDataset") {
-        const urls = sources.map((item) => item.link).filter((item): item is string => Boolean(item));
-        const config = JSON.parse(sources[0]?.rawText || "{}") as { root?: string; linkSelector?: string };
-        const result = await api.importWebsitePages(kbId, { url: config.root || urls[0] || "", selector: process.webSelector, linkSelector: config.linkSelector, urls, process });
-        await refreshKnowledgeBases();
-        toast({ title: `已开始导入 ${result.imported} 个网页`, status: "success" });
-        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
-        return;
-      }
-      const connectorImports: Partial<Record<NonNullable<typeof kbKind>, () => Promise<{ imported: number; label: string }>>> = {
-        yuque: async () => {
-          const meta = sources[0]?.connectorMeta;
-          if (!meta?.repoId) throw new Error("缺少语雀知识库信息，请返回第一步重新选择");
-          const result = await api.importYuqueDocs(kbId, { repoId: meta.repoId, docIds: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
-          return { imported: result.imported, label: "语雀文档" };
-        },
-        dingtalk: async () => {
-          const meta = sources[0]?.connectorMeta;
-          if (!meta?.workspaceId) throw new Error("缺少钉钉知识库信息，请返回第一步重新选择");
-          const result = await api.importDingtalkNodes(kbId, { workspaceId: meta.workspaceId, nodeIds: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
-          return { imported: result.imported, label: "钉钉文档" };
-        },
-      };
-      const importConnector = importSource === "apiDataset" && kbKind ? connectorImports[kbKind] : undefined;
-      if (importConnector) {
-        const result = await importConnector();
-        await refreshKnowledgeBases();
-        toast({ title: `已开始导入 ${result.imported} 篇${result.label}`, status: "success" });
-        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
-        return;
-      }
-      if (importSource === "apiDataset" && kbKind === "feishu") {
-        const wiki = sources[0]?.connectorMeta;
-        if (wiki?.source === "feishu-wiki" && wiki.spaceId) {
-          const result = await api.importFeishuWikiFiles(kbId, { spaceId: wiki.spaceId, tokens: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
-          await refreshKnowledgeBases();
-          toast({ title: `已开始导入 ${result.imported} 篇飞书 Wiki 文档`, status: "success" });
-          nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
-          return;
-        }
-        if (!folderToken) throw new Error("缺少 Folder Token，请返回第一步重新读取目录");
-        const result = await api.importFeishuFiles(kbId, { folderToken, tokens: sources.map((item) => item.id), documents: connectorDocuments, process, parentId });
-        await refreshKnowledgeBases();
-        toast({ title: `已开始导入 ${result.imported} 篇飞书文档`, status: "success" });
-        nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
-        return;
-      }
       const waiting = sources.filter((item) => item.createStatus === "waiting");
-      for (const item of waiting) {
-        setSources((state) =>
-          state.map((source) => (source.id === item.id ? { ...source, createStatus: "creating" } : source)),
-        );
-        await new Promise((r) => setTimeout(r, 200));
-        const type =
-          importSource === "fileLink"
-            ? "web"
-            : importSource === "fileCustom"
-              ? "manual"
-              : importSource === "apiDataset"
-                ? kbKind === "feishu" || kbKind === "yuque" || kbKind === "dingtalk"
-                  ? kbKind
-                  : "api"
-              : importSource === "imageDataset"
-                ? "image"
-                : "upload";
-        await addSource(
-          kbId,
-          type,
-          item.sourceName,
-          item.link || item.dbFileId || `uploads/${item.sourceName}`,
-          importSource === "imageDataset" ? { ...process, imageIndex: true } : process,
-          parentId,
-          { fileId: item.dbFileId, rawText: item.rawText },
-        );
-        setSources((state) =>
-          state.map((source) => (source.id === item.id ? { ...source, createStatus: "finish" } : source)),
-        );
+      const draftIds = waiting.map((item) => item.processingDraft?.id).filter((id): id is string => Boolean(id));
+      if (draftIds.length !== waiting.length) {
+        throw new Error("存在未完成处理的数据，请返回“数据预览”等待全部文件处理完成");
       }
-      toast({ title: "导入成功，请等待训练", status: "success" });
+      setSources((state) => state.map((source) => source.createStatus === "waiting" ? { ...source, createStatus: "creating" } : source));
+      const result = await api.commitProcessingDrafts(kbId, draftIds);
+      setSources((state) => state.map((source) => source.createStatus === "creating" ? { ...source, createStatus: "finish" } : source));
+      await refreshKnowledgeBases();
+      toast({ title: `已入库 ${result.imported} 个文件`, status: "success" });
       nav(`/kb/${kbId}${parentId ? `?parent=${parentId}` : ""}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "上传异常";

@@ -12,7 +12,7 @@ class AlembicLayoutTests(unittest.TestCase):
     def test_single_head(self) -> None:
         script = ScriptDirectory.from_config(alembic_config())
         heads = script.get_heads()
-        self.assertEqual(heads, ["0011_feishu_folders"])
+        self.assertEqual(heads, ["0012_processing_drafts"])
 
     def test_ini_and_versions_exist(self) -> None:
         root = Path(__file__).resolve().parents[1]

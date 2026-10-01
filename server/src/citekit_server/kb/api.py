@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import mimetypes
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -13,15 +16,19 @@ from starlette.background import BackgroundTask
 from citekit_server.db import (
     ChunkRow,
     KnowledgeBaseRow,
+    ProcessingDraftRow,
     SourceRow,
     UploadedFileRow,
     get_db,
 )
 from citekit_server.tools.logic import forget_tools_for_kbs
 from citekit_server.ids import new_id
-from citekit_server.kb.ingest import build_preview_from_kb, ingest_source, now_stamp, reindex_chunk
+from citekit_server.kb.ingest import (
+    build_draft_from_kb, build_preview_from_kb, chat_model, draft_result_payload,
+    ingest_draft, ingest_source, now_stamp, reindex_chunk, vision_model,
+)
 from citekit_server.kb.sync import run_website_sync
-from citekit_server.kb.web import MAX_DEPTH, MAX_PAGES, normalize_url
+from citekit_server.kb.web import MAX_DEPTH, MAX_PAGES, fetch_web, normalize_url
 from citekit_server.retrieve.logic import search_kb
 from citekit_server.schemas import (
     FileOut,
@@ -29,8 +36,11 @@ from citekit_server.schemas import (
     KnowledgeBaseOut,
     KnowledgeBasePatch,
     OriginalFileText,
+    CommitProcessingDraftIn,
     PreviewIn,
     PreviewOut,
+    ProcessingDraftIn,
+    ProcessingDraftOut,
     ProcessConfigIn,
     SearchIn,
     SearchOut,
@@ -259,6 +269,113 @@ async def upload_file(kb_id: str, file: UploadFile = File(...), db: Session = De
     return FileOut(id=file_id, name=name, size=len(data))
 
 
+DRAFT_TTL = timedelta(hours=2)
+
+
+def _draft_stamp(value: datetime) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _draft_fingerprint(
+    *, kb_id: str, body: ProcessingDraftIn, process: ProcessConfigIn,
+    model_ids: dict[str, str], site: dict[str, str] | None,
+) -> str:
+    # raw text stays server-side; only its digest enters the cache key.
+    raw_hash = hashlib.sha256((body.rawText or "").encode("utf-8")).hexdigest()
+    data = {
+        "kb": kb_id, "title": body.title.strip(), "type": body.type, "locator": body.locator.strip(),
+        "parent": body.parentId, "file": body.fileId, "raw": raw_hash,
+        "process": process.model_dump(mode="json"), "models": model_ids, "site": site,
+    }
+    return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _draft_out(row: ProcessingDraftRow, *, cached: bool) -> ProcessingDraftOut:
+    result = row.result if isinstance(row.result, dict) else {}
+    preview = result.get("preview") if isinstance(result.get("preview"), dict) else {}
+    return ProcessingDraftOut.model_validate({**preview, "draftId": row.id, "cached": cached})
+
+
+@router.post("/kbs/{kb_id}/processing-drafts", response_model=ProcessingDraftOut)
+def create_processing_draft(kb_id: str, body: ProcessingDraftIn, db: Session = Depends(get_db)) -> ProcessingDraftOut:
+    kb = _kb(db, kb_id)
+    cfg = body.process or ProcessConfigIn()
+    uploaded = None
+    if body.fileId:
+        uploaded = db.get(UploadedFileRow, body.fileId)
+        if not uploaded or uploaded.kb_id != kb_id:
+            raise HTTPException(404, "文件不存在")
+    site: dict[str, str] | None = None
+    if body.site:
+        root = normalize_url(body.site.root)
+        if body.type != "web" or kb.kind != "website" or not root:
+            raise HTTPException(400, "网站配置无效")
+        site = {"root": root, "selector": cfg.webSelector.strip(), "linkSelector": body.site.linkSelector.strip()}
+    llm, vlm = chat_model(db, kb), vision_model(db, kb)
+    fingerprint = _draft_fingerprint(
+        kb_id=kb_id, body=body, process=cfg,
+        model_ids={"llm": llm.id if llm else "", "vlm": vlm.id if vlm else ""}, site=site,
+    )
+    now = _draft_stamp(datetime.now())
+    row = db.query(ProcessingDraftRow).filter(
+        ProcessingDraftRow.kb_id == kb_id,
+        ProcessingDraftRow.fingerprint == fingerprint,
+        ProcessingDraftRow.status == "ready",
+        ProcessingDraftRow.expires_at > now,
+    ).order_by(ProcessingDraftRow.created_at.desc()).first()
+    if row:
+        return _draft_out(row, cached=True)
+    title = body.title.strip() or (uploaded.name if uploaded else "预览")
+    locator = body.locator.strip() or (uploaded.name if uploaded else title)
+    filename, file_path = (uploaded.name, uploaded.path) if uploaded else ("", None)
+    # Website discovery stores UI crawl settings in rawText. A reviewed page
+    # draft must instead freeze the page content itself, just like final ingest.
+    raw_text = (body.rawText or "").strip()
+    if body.type == "web" and not uploaded:
+        try:
+            raw_text = fetch_web(locator, cfg.webSelector)
+        except RuntimeError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    try:
+        with as_local_path(file_path, filename) as local_path:
+            processed, preview = build_draft_from_kb(
+                db, kb, text=raw_text, file_path=local_path,
+                filename=filename, title=title, process=cfg,
+            )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+    now_dt = datetime.now()
+    row = ProcessingDraftRow(
+        id=new_id("drf"), kb_id=kb_id, fingerprint=fingerprint, title=title,
+        source_type=body.type or "upload", locator=locator, parent_id=body.parentId,
+        file_id=body.fileId, raw_text=raw_text or None,
+        process=cfg.model_dump(), result=draft_result_payload(processed, preview, site=site), status="ready",
+        created_at=_draft_stamp(now_dt), expires_at=_draft_stamp(now_dt + DRAFT_TTL),
+    )
+    db.add(row); db.commit(); db.refresh(row)
+    return _draft_out(row, cached=False)
+
+
+@router.post("/kbs/{kb_id}/processing-drafts/commit")
+def commit_processing_drafts(kb_id: str, body: CommitProcessingDraftIn, db: Session = Depends(get_db)) -> dict[str, int]:
+    _kb(db, kb_id)
+    ids = list(dict.fromkeys(item.strip() for item in body.draftIds if item.strip()))
+    if not ids:
+        raise HTTPException(400, "请先生成处理草稿")
+    now = _draft_stamp(datetime.now())
+    rows = db.query(ProcessingDraftRow).filter(ProcessingDraftRow.kb_id == kb_id, ProcessingDraftRow.id.in_(ids)).all()
+    if len(rows) != len(ids) or any(row.status != "ready" or row.expires_at <= now for row in rows):
+        raise HTTPException(409, "存在已失效或不可提交的处理草稿，请返回预览页重新处理")
+    # Synchronous commit gives the confirmation screen an accurate outcome and
+    # guarantees no second content-generation pass occurs in a background task.
+    for draft_id in ids:
+        try:
+            ingest_draft(draft_id)
+        except Exception as exc:
+            raise HTTPException(500, f"草稿提交失败：{exc}") from exc
+    return {"imported": len(ids)}
+
+
 @router.post("/kbs/{kb_id}/preview", response_model=PreviewOut)
 def preview(kb_id: str, body: PreviewIn, db: Session = Depends(get_db)) -> PreviewOut:
     kb = _kb(db, kb_id)
@@ -299,18 +416,17 @@ def website_sync(kb_id: str, body: WebsiteSyncIn, background: BackgroundTasks, d
     kb.website_url = url
     kb.website_selector = (body.selector or "").strip()
     kb.website_link_selector = (body.linkSelector or "").strip()
-    # Seed the list before yielding to the background worker so the UI can
-    # immediately show that the requested sync has started.
+    # A new entry page is seeded so the UI immediately shows the sync started.
+    # Existing pages are left untouched: forcing them to "syncing" would make the
+    # worker treat them as changed and re-embed them on every sync.
     seed = (
         db.query(SourceRow)
         .filter(SourceRow.kb_id == kb.id, SourceRow.type == "web", SourceRow.locator == url)
         .one_or_none()
     )
-    process = ProcessConfigIn(webSelector=kb.website_selector).model_dump()
     if seed is None:
+        process = ProcessConfigIn(webSelector=kb.website_selector).model_dump()
         db.add(SourceRow(id=new_id("src"), kb_id=kb.id, type="web", title=url, locator=url, acl="internal", status="syncing", process=process, updated_at=now_stamp(), chunk_count=0))
-    else:
-        seed.status, seed.error_message, seed.process, seed.updated_at = "syncing", None, process, now_stamp()
     db.commit()
     background.add_task(run_website_sync, kb.id)
     return WebsiteSyncOut(ok=True, maxPages=MAX_PAGES, maxDepth=MAX_DEPTH)

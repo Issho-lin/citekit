@@ -24,10 +24,13 @@ class PreviewedDocumentIn(BaseModel):
     id: str = Field(min_length=1, max_length=200)
     title: str = Field(min_length=1, max_length=500)
     text: str = Field(min_length=1, max_length=5_000_000)
-    locator: str = Field(min_length=1, max_length=2_000)
+    # Provider APIs may omit a browser URL. The client supplies a stable
+    # provider-qualified fallback from the document ID in that case.
+    locator: str = Field(default="", max_length=2_000)
 
     def to_document(self) -> ConnectorDocument:
-        return ConnectorDocument(self.title, self.text, self.locator)
+        locator = self.locator.strip() or f"connector:{self.id}"
+        return ConnectorDocument(self.title, self.text, locator)
 
 
 def connector_kb(db: Session, kb_id: str, kind: str, label: str) -> KnowledgeBaseRow:

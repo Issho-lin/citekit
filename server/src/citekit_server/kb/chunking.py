@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from citekit_server.schemas import ProcessConfigIn
 
 _MD_HEADING = re.compile(r"^(#{1,6})\s+\S")
+_FENCE_OPEN = re.compile(r"^( {0,3})(`{3,}|~{3,})([^`~]*)$")
 _CN_NUM = r"[一二三四五六七八九十百千零〇两0-9]+"
 _CHAPTER = re.compile(rf"^第{_CN_NUM}(章|编|部分)\b")
 _SECTION = re.compile(rf"^第{_CN_NUM}节\b")
@@ -143,6 +145,10 @@ def split_parents(
     if not body:
         return []
     cfg = process or ProcessConfigIn()
+    # A fenced block is unambiguous Markdown even when the caller only supplied raw text.
+    # Keep this narrow: a bare "#" must not turn arbitrary plain text into Markdown.
+    if _has_fenced_markdown(body):
+        return split_markdown_parents(body, cfg, llm_max_context=llm_max_context)
     size, overlap = process_size(cfg)
     body = _prepare_text(body)
     if not should_split(body, cfg, llm_max_context):
@@ -157,6 +163,142 @@ def split_parents(
         return _split_by_delimiter(body, cfg, size, overlap=0)
     return _split_by_paragraph(body, cfg, size, 0, ai_parts)
 
+
+
+@dataclass
+class ContentBlock:
+    """Normalized document structure consumed by the block chunker.
+
+    Parsers own structure detection. ``atomic`` means a generic chunker must
+    preserve the block verbatim even when it exceeds the configured size.
+    """
+
+    kind: str
+    text: str
+    atomic: bool = False
+    heading_path: list[str] = field(default_factory=list)
+    source_format: str = "text"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def _has_fenced_markdown(text: str) -> bool:
+    return any(_FENCE_OPEN.match(line) for line in (text or "").splitlines())
+
+
+def markdown_blocks(text: str) -> list[ContentBlock]:
+    """Parse the Markdown block subset needed for safe ingestion.
+
+    This deliberately preserves source lines instead of re-rendering Markdown.
+    It implements CommonMark fence matching (up to three leading spaces, same
+    fence character and a closing fence at least as long as the opener).
+    """
+    blocks: list[ContentBlock] = []
+    headings: list[str] = []
+    lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    paragraph: list[str] = []
+    index = 0
+
+    def flush_paragraph() -> None:
+        nonlocal paragraph
+        value = "\n".join(paragraph).strip()
+        if value:
+            blocks.append(ContentBlock("paragraph", value, heading_path=headings.copy(), source_format="markdown"))
+        paragraph = []
+
+    while index < len(lines):
+        line = lines[index]
+        fence = _FENCE_OPEN.match(line)
+        if fence:
+            flush_paragraph()
+            marker = fence.group(2)
+            char, length = marker[0], len(marker)
+            code = [line]
+            index += 1
+            closed = False
+            while index < len(lines):
+                candidate = lines[index]
+                code.append(candidate)
+                close = re.match(rf"^ {{0,3}}{re.escape(char)}{{{length},}}[ \t]*$", candidate)
+                index += 1
+                if close:
+                    closed = True
+                    break
+            info = (fence.group(3) or "").strip().split(None, 1)
+            language = info[0].lower() if info else ""
+            kind = "diagram" if language in {"mermaid", "plantuml", "puml", "dot", "graphviz"} else "code"
+            metadata: dict[str, Any] = {"language": language} if language else {}
+            if not closed:
+                metadata["unclosed_fence"] = True
+            blocks.append(ContentBlock(kind, "\n".join(code), atomic=True, heading_path=headings.copy(), source_format="markdown", metadata=metadata))
+            continue
+        match = _MD_HEADING.match(line)
+        if match:
+            flush_paragraph()
+            level = len(match.group(1))
+            label = line[level:].strip()
+            headings[level - 1 :] = [label]
+            blocks.append(ContentBlock("heading", line, heading_path=headings.copy(), source_format="markdown", metadata={"level": level}))
+        elif not line.strip():
+            flush_paragraph()
+        else:
+            paragraph.append(line)
+        index += 1
+    flush_paragraph()
+    return blocks
+
+
+def _markdown_regular_parts(block: ContentBlock, cfg: ProcessConfigIn, size: int) -> list[str]:
+    """Split non-atomic Markdown blocks only; atomic blocks never reach this path."""
+    if size <= 0 or len(block.text) <= size:
+        return [block.text]
+    if cfg.chunkSettingMode == "custom" and cfg.chunkSplitMode == "char":
+        return _split_by_delimiter(block.text, cfg, size, 0)
+    return _window(block.text, size, 0)
+
+
+def split_markdown_parents(text: str, process: ProcessConfigIn | None = None, *, llm_max_context: int | None = None) -> list[str]:
+    """Chunk Markdown while treating fenced code and diagrams as indivisible."""
+    body = (text or "").strip()
+    if not body:
+        return []
+    cfg = process or ProcessConfigIn()
+    if not should_split(body, cfg, llm_max_context):
+        return [body]
+    # QA windowing has a different contract. Keep the original behavior until
+    # QA extraction itself becomes block-aware.
+    if cfg.trainingType == "qa" or cfg.qaEnhance:
+        size, overlap = process_size(cfg)
+        return _window(body, size or 8000, min(overlap or 200, (size or 8000) // 4))
+    size, _overlap = process_size(cfg)
+    chunks: list[str] = []
+    buffer: list[str] = []
+
+    def flush() -> None:
+        nonlocal buffer
+        value = "\n\n".join(item for item in buffer if item.strip()).strip()
+        if value:
+            chunks.extend(_window(value, size, 0) if size > 0 and len(value) > size else [value])
+        buffer = []
+
+    for block in markdown_blocks(body):
+        if block.kind == "heading":
+            # Preserve headings with subsequent prose, matching the legacy
+            # section behavior, but never make a fence part of a text window.
+            if buffer and size > 0 and len("\n\n".join(buffer + [block.text])) > size:
+                flush()
+            buffer.append(block.text)
+            continue
+        if block.atomic:
+            flush()
+            chunks.append(block.text.strip())
+            continue
+        for part in _markdown_regular_parts(block, cfg, size):
+            candidate = "\n\n".join(buffer + [part]).strip()
+            if buffer and size > 0 and len(candidate) > size:
+                flush()
+            buffer.append(part)
+    flush()
+    return chunks or [body]
 
 def _split_by_size(body: str, size: int, overlap: int) -> list[str]:
     return _window(body, size or 1000, overlap)
@@ -600,6 +742,7 @@ class Unit:
     text: str
     answer: str = ""
     indexes: list[dict] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def add_index(self, kind: str, text: str) -> None:
         body = (text or "").strip()

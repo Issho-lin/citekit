@@ -14,6 +14,9 @@ IMAGES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 @dataclass
 class ParseOut:
     text: str
+    # The source format selects format-safe processing downstream. It records
+    # parsing provenance; it is not a claim that all original structure remains.
+    source_format: str = "text"
     images: list[bytes] = field(default_factory=list)
     page_pngs: list[bytes] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -34,7 +37,7 @@ def parse_file(path: str, name: str = "", *, render_pages: bool = False, collect
         blob = file.read_bytes()
         if len(blob) < 32:
             raise ValueError("图片文件过小或已损坏")
-        return ParseOut(text="", images=[blob])
+        return ParseOut(text="", source_format="image", images=[blob])
     if suffix not in SUPPORTED:
         raise ValueError(f"暂不支持 {suffix or '该格式'}，请上传 PDF、Word、图片、Markdown、纯文本、HTML 或 CSV")
     if suffix == ".pdf":
@@ -42,8 +45,9 @@ def parse_file(path: str, name: str = "", *, render_pages: bool = False, collect
     if suffix == ".docx":
         return _docx(file, collect_images=collect_images)
     if suffix in {".html", ".htm"}:
-        return ParseOut(text=_strip_html(_read_text(file)))
-    return ParseOut(text=_read_text(file))
+        return ParseOut(text=_strip_html(_read_text(file)), source_format="html_text")
+    source_format = "markdown" if suffix in {".md", ".markdown"} else "csv" if suffix == ".csv" else "text"
+    return ParseOut(text=_read_text(file), source_format=source_format)
 
 
 def _read_text(file: Path) -> str:
@@ -87,7 +91,7 @@ def _pdf(file: Path, *, render_pages: bool, collect_images: bool) -> ParseOut:
 
         reader = PdfReader(str(file))
         text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages if (page.extract_text() or "").strip())
-    return ParseOut(text=text, images=_dedupe_blobs(images), page_pngs=page_pngs)
+    return ParseOut(text=text, source_format="pdf_text", images=_dedupe_blobs(images), page_pngs=page_pngs)
 
 
 def _docx(file: Path, *, collect_images: bool) -> ParseOut:
@@ -113,7 +117,7 @@ def _docx(file: Path, *, collect_images: bool) -> ParseOut:
                 continue
             if blob and len(blob) > 400:
                 images.append(bytes(blob))
-    return ParseOut(text=text, images=_dedupe_blobs(images))
+    return ParseOut(text=text, source_format="docx_text", images=_dedupe_blobs(images))
 
 
 def _docx_heading_level(paragraph: object) -> int | None:

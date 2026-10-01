@@ -328,7 +328,7 @@ export function KbDetailPage() {
                               </button>
                             </div>
                           </td>
-                          <td className="mono">{s.updatedAt}</td>
+                          <td className="mono" title={s.type === "web" ? `最近检查：${s.lastSeenAt || "尚未同步"}` : undefined}>{s.updatedAt}</td>
                           <td>
                             <span
                               className={

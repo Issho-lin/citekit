@@ -14,6 +14,8 @@ export type ImportSourceItemType = {
   file?: File;
   link?: string;
   rawText?: string;
+  /** Current processing-config fingerprint and its server-side reviewed draft. */
+  processingDraft?: { key: string; id: string; result: unknown };
   /** Connector-only metadata; never replaces the previewable source text. */
   connectorMeta?: Record<string, string>;
   icon?: string;
